@@ -129,8 +129,15 @@ try {
     # find no HEAD, and go permanently silent -- which is exactly what it looks
     # like when it works. Both candidates stay: a fail-closed guard must not go
     # quietly dead when the layout shifts.
+    # A candidate must RESOLVE as a git repo, not merely hold a `.git` entry
+    # (GAP-009). The scoped EAP keeps git's stderr off the outer catch, which
+    # would otherwise swallow this fail-closed check.
     $repo = @($ws, (Join-Path $ws 'project')) |
-            Where-Object { Test-Path -LiteralPath (Join-Path $_ '.git') } |
+            Where-Object {
+                (Test-Path -LiteralPath (Join-Path $_ '.git')) -and
+                (& { $ErrorActionPreference = 'Continue'
+                     git -C $_ rev-parse --git-dir 2>$null })
+            } |
             Select-Object -First 1
     if (-not $repo) { exit 0 }
 
@@ -139,15 +146,20 @@ try {
     $head = $head.Trim()
 
     $content = Get-Content -LiteralPath $page -Raw
-    $m = [regex]::Match($content, '<div>head <b>([0-9a-f]{7,40})</b></div>')
+    # Case-insensitive: an uppercase SHA must still be COMPARED, not fall through
+    # to the "no HEAD marker" silence (GAP-008).
+    $m = [regex]::Match($content, '<div>head <b>([0-9a-fA-F]{7,40})</b></div>')
     if (-not $m.Success) { exit 0 }
 
     $recorded = $m.Groups[1].Value
-    # PREFIX, not equality (GAP-003): the page may carry the 40-char SHA or a
-    # shortened one, and the page's prefix length need not match `--short`'s.
-    # Two strings that name the same commit must compare equal; equality of two
-    # differently-truncated spellings of it is a false alarm, not a lag.
-    if ($head.StartsWith($recorded) -or $recorded.StartsWith($head)) { exit 0 }
+    # Resolve both sides to FULL commit ids and compare those (GAP-008): any two
+    # spellings naming the same commit match, while a fake SHA fails to resolve
+    # and is correctly reported as lagging. `--quiet` keeps git's stderr off the
+    # outer catch, which would otherwise swallow the verdict; `ToLower()` because
+    # object ids are lowercase hex. `$head` stays short -- error-message wording.
+    $headFull = (& git -C $repo rev-parse HEAD 2>$null)
+    $recFull = (& git -C $repo rev-parse --verify --quiet "$($recorded.ToLower())^{commit}" 2>$null)
+    if ($recFull -and $headFull -and ($recFull.Trim() -eq $headFull.Trim())) { exit 0 }
 
     # UTF-8 so the Chinese reason survives being captured off stdout.
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
