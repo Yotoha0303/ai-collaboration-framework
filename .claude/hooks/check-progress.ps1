@@ -10,6 +10,9 @@
 # Exit 0 with JSON      -> `decision:block` feeds the reason back to the model,
 #                          which must update the page before stopping;
 #                          `systemMessage` shows a note to the user only.
+#                          This guard emits `decision:block` for a lagging page
+#                          and `systemMessage` for a pointer that exists but
+#                          yields no page name.
 #
 # Why PowerShell and not bash: if Git for Windows lives somewhere that keeps
 # `usr\bin` off the Windows PATH, a hook command of
@@ -18,15 +21,19 @@
 # location rather than from CLAUDE_PROJECT_DIR, so it works regardless of how
 # the hook is invoked or what the working directory is.
 #
-# Layout this script assumes (the AI framework lives OUTSIDE the repo, by human
-# decision — so that it cannot be shipped as a deliverable):
+# Layout this script assumes. THIS repository is self-hosted: the workspace root
+# IS the repo, so the framework files sit in the repo by design (GAP-004: the
+# "framework cannot enter the repo" argument does not hold in this layout).
 #
-#     <workspaceRoot>/                     <- session working directory
+#     <workspaceRoot>/                     <- session working directory == this repo
 #         CLAUDE.md                        <- thin entry point (imports AGENTS.md)
 #         .claude/hooks/check-progress.ps1 <- this file
 #         .claude/progress-page.txt        <- ONE line: the page's file name
 #         <page>                           <- the page, sibling of .claude/
-#         project/                         <- the repo (contains .git)
+#         project/                         <- repo (contains .git) in the TARGET layout
+#
+# Both layouts are still supported: the workspace root always wins if it holds
+# `.git`, and the repo may equally be a `project/` child.
 #
 # The page NAME is read from `.claude/progress-page.txt`, not hardcoded: the page
 # is renamed as the project progresses, and a rename must not require editing
@@ -35,14 +42,24 @@
 # Both lookups below resolve from the script's OWN location, never from the
 # working directory — the hook may run with any CWD.
 #
-# Silent in two cases on purpose: no git HEAD, and no HEAD marker in the page
-# (the page was restructured beyond recognition; a false alarm on every stop is
-# worse than saying nothing). A MISSING page is NOT silent any more — see below.
+# Silent cases on purpose: no git HEAD, no HEAD marker in the page (the page was
+# restructured beyond recognition; a false alarm on every stop is worse than
+# saying nothing), and NO page at all.
+#
+# A MISSING page is silent by human decision (AGENTS.md section 5, "initialise on
+# first use, no report needed"): the premise is "the page EXISTS and must not
+# lag". With no page there is no fact to compare — it means "not initialised
+# yet", NOT "the page was lost". Alerting here is pure noise on a fresh
+# workspace.
 #
 # NOTE: these lookups fail closed by design, so a WRONG path derivation makes
-# this guard silently never block. If the layout or the page name ever changes,
-# re-verify with the negative case (page carrying a stale SHA must emit
-# decision:block), not just the positive one (matching SHA must stay silent).
+# this guard silently never block. That is OBSERVATIONALLY EQUIVALENT to the
+# missing-page case, so verifying "silent when absent" proves nothing at all.
+# If the layout or the page name ever changes, re-verify with BOTH cases:
+#   (a) no page         -> silent exit 0
+#   (b) stale SHA in an existing page -> must emit decision:block
+# Only (b) has teeth; if (b) still blocks, (a)'s silence can be trusted as
+# "no criterion applies" rather than "the script is dead".
 
 $ErrorActionPreference = 'Stop'
 
@@ -53,12 +70,21 @@ try {
     $ws = Split-Path -Parent $claudeDir
 
     # Page NAME comes from a one-line pointer file so the page can be renamed
-    # without touching this script. Falls back to the current name if absent.
+    # without touching this script. The pointer is the page name's single source
+    # of truth, so a pointer that EXISTS but yields NO name (empty, whitespace,
+    # or unreadable) is a real fault: this script would otherwise silently keep
+    # using the stale default name below. That case is reported to the user via
+    # `systemMessage`. A pointer naming a page that does NOT exist stays silent —
+    # an ACCEPTED COST (AGENTS.md section 5): that is observationally identical
+    # to "not initialised yet", which must not alert. A pointer file that is
+    # absent altogether is likewise "not initialised yet", not a fault.
     $name = 'project-progress.html'
+    $pointerFault = $false
     $nameFile = Join-Path $claudeDir 'progress-page.txt'
     if (Test-Path -LiteralPath $nameFile) {
-        $fromFile = Get-Content -LiteralPath $nameFile -Raw
-        if ($fromFile) { $name = $fromFile.Trim() }
+        $fromFile = Get-Content -LiteralPath $nameFile -Raw -ErrorAction SilentlyContinue
+        if ($fromFile -and $fromFile.Trim()) { $name = $fromFile.Trim() }
+        else { $pointerFault = $true }
     }
 
     # The page is the sibling of `.claude/` in the current layout; in the
@@ -70,18 +96,29 @@ try {
             Where-Object { Test-Path -LiteralPath $_ } |
             Select-Object -First 1
 
-    # A missing page is a REAL anomaly, not a clone scenario: the framework lives
-    # only on this machine. Tell the user instead of failing closed in silence
-    # (D3 — a guard that swallows the real case is worse than no guard).
-    if (-not $page) {
+    # The pointer EXISTED but named nothing: the page lookup above fell back to
+    # the default name, so the guard may be watching the wrong file entirely.
+    # That is a real fault, not "not initialised yet" — report it to the user.
+    # It takes precedence over the silent no-page case below: with no usable page
+    # name the guard cannot even tell WHICH page is missing. (The lookup itself
+    # proved the pointer file exists, so no second test is needed here.) The
+    # silent fallback this replaces is the GAP-002 defect.
+    if ($pointerFault) {
         [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-        $expected = Join-Path $ws $name
-        [ordered]@{ systemMessage = "进度页缺失：$expected （页名取自 .claude/progress-page.txt）。" +
-                                     "该页是记录的第二投影，缺失即 '两处成熟度不一致' 的隐患。" +
-                                     "请确认页名是否正确，或恢复该页面。" } |
-            ConvertTo-Json -Compress
+        [ordered]@{
+            systemMessage = ("进度页指针异常：$nameFile 存在，但读不出页名（空文件 / 全是空白 / 不可读）。" +
+                             "守卫已回退到默认页名 project-progress.html —— 这只在页名恰好仍是它时才正确，" +
+                             "否则守卫在看一个错误的文件。页名指针是页名的唯一事实源（AGENTS.md 第 5 节），" +
+                             "请修正该文件再结束本轮。")
+        } | ConvertTo-Json -Compress
         exit 0
     }
+
+    # No page -> nothing to compare against, so there is no criterion to apply.
+    # The premise is "the page exists and must not lag"; a page that was never
+    # created cannot lag. "Not initialised yet" != "the page went missing" —
+    # so exit silently (human decision; see AGENTS.md section 5).
+    if (-not $page) { exit 0 }
 
     # The repo is the `project/` child; the second candidate is the pre-move
     # layout, where the directory holding `.claude/` IS the repo.
@@ -99,7 +136,11 @@ try {
     if (-not $m.Success) { exit 0 }
 
     $recorded = $m.Groups[1].Value
-    if ($recorded -eq $head) { exit 0 }
+    # PREFIX, not equality (GAP-003): the page may carry the 40-char SHA or a
+    # shortened one, and the page's prefix length need not match `--short`'s.
+    # Two strings that name the same commit must compare equal; equality of two
+    # differently-truncated spellings of it is a false alarm, not a lag.
+    if ($head.StartsWith($recorded) -or $recorded.StartsWith($head)) { exit 0 }
 
     # UTF-8 so the Chinese reason survives being captured off stdout.
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
