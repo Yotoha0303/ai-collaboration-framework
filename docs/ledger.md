@@ -4,10 +4,10 @@
 
 | 项 | 值 |
 | --- | --- |
-| 台账快照时间（UTC） | `2026-10-09T16:25:43Z`（实测 `(Get-Date).ToUniversalTime()`） |
-| 快照时 HEAD | `8537671`（全长 `8537671ff62d7631a350c9749994d729d881c7f1`；含 `GAP-010` 的提交 `8537671 fix(框架): 运行态排除改为随仓库分发`） |
+| 台账快照时间（UTC） | `2026-10-09T16:31:03Z`（实测 `(Get-Date).ToUniversalTime()`；前次=`2026-10-09T16:25:43Z`） |
+| 快照时 HEAD | `61f63de`（全长 `61f63de245e6e7f25966eab11ac0a2907c1554ea`；前次=`8537671`，即含 `GAP-010` 的提交） |
 | 快照时入库文件数 | `18`（`git ls-files` 行数实测；含 `.gitignore`） |
-| 已用 `GAP-` 最大号 | `GAP-011` |
+| 已用 `GAP-` 最大号 | `GAP-013`（前次=`GAP-011`） |
 | 已用 `INC-` / `DEFER-` | 无（`0`） |
 | 页名指针快照 | `.claude/progress-page.txt` → `project-progress.html`，字节 `112,…,108,10`，SHA256 `BF4B6899…B2ADE1` |
 
@@ -25,7 +25,9 @@
 | **`GAP-006`** | 本工作区**尚无 CI / 合约 / 前端等对应物** → `AGENTS.md` §7 部分复核命令属**模板**、当前无对应物。**这不是缺口，而是"该环无对应物"**；按 §7 口径**登记备查** | `Test-Path .github` → `False`；`Test-Path Dockerfile` → `False`；`Test-Path docs` → `False`（登记本表之前） | **接回该环时解除**（届时 §7 对应行从"模板"转为"待实测"） | `不适用（该环无对应物）` |
 | **`GAP-007`** | 守卫的**仓库解析顺序**把 `project/` 排在**工作区根之前**——`project/` 目录**存在但非仓库**时，一旦有人在其中 `git init`，守卫会锁定该**内层空仓** → 取不到 HEAD（unborn，`rev-parse` exit 128）→ **永久静默**，而静默正是它正常时的表现 | 对照实算（附录 D.6）：同一假 `.git` 下，**旧序**解析到 `…\project`，**新序**解析到工作区根；`git -C <新建空仓> rev-parse --short HEAD` → 空输出、**exit 128** | 候选顺序**对调**（优先工作区根），**保留两处候补**；改后重跑附录 C.2 用例 | **`已解除`**（**已独立放行**：`falsifier` 设计攻击、总控代跑 T1 + T10，两方向实测，附录 D.7） |
 | **`GAP-008`** | 守卫用**双向前缀**比对 SHA（`:150` `$head.StartsWith($recorded) -or $recorded.StartsWith($head)`），故「**真前缀 + 假后缀**（至 40 位）」被判为一致 → 放行伪造 SHA | 代跑实测（`record.md` `[2026-10-09T14:48:43Z]` 负向 T5，附录 D.7）：页写 `ad4e6c8000000000000000000000000000000000`（真前缀 `ad4e6c8` + 假后缀）→ 守卫 **stdout 空、静默**，本该认出"这不是 HEAD" | 若需覆盖：把"页长 > 7 且 ≥ 前缀"的**歧义**情形改判为不静默；**判定前须人工裁定**（可能得不偿失，见右侧边界） | `已修（二次修复：--verify 须降级 EAP）` |
-| **`GAP-009`** | 守卫判仓库用的是 `.git` 的**存在性**而非**有效性**（`:133` `Test-Path (Join-Path $_ '.git')`）：若 `project/.git` 是**空目录**（非有效仓），被选中即 `rev-parse` 失败 → 静默 | **潜在、当前布局不可达**：实测 T3 **BLOCK**（`record.md` `[2026-10-09T14:48:43Z]`，附录 D.7）—— 新序 `@($ws, project)` 令 `$ws` 先命中，**空目录根本不被咨询**；`falsifier` 预测"静默"**被实测推翻**。仅**目标布局**（工作区根无 `.git`、仓真在 `project/`）下可达。**该性质属 `:133` 既有，非本轮引入** | 接回目标布局时改为校验 `.git` **有效**（如 `git -C <cand> rev-parse --git-dir` 成功才采纳），而非 `Test-Path` | `修复待独立放行` |
+| **`GAP-009`** | 守卫判仓库用的是 `.git` 的**存在性**而非**有效性**（`:133` `Test-Path (Join-Path $_ '.git')`）：若 `project/.git` 是**空目录**（非有效仓），被选中即 `rev-parse` 失败 → 静默 | **潜在、当前布局不可达**：实测 T3 **BLOCK**（`record.md` `[2026-10-09T14:48:43Z]`，附录 D.7）—— 新序 `@($ws, project)` 令 `$ws` 先命中，**空目录根本不被咨询**；`falsifier` 预测"静默"**被实测推翻**。仅**目标布局**（工作区根无 `.git`、仓真在 `project/`）下可达。**该性质属 `:133` 既有，非本轮引入** | 接回目标布局时改为校验 `.git` **有效**（如 `git -C <cand> rev-parse --git-dir` 成功才采纳），而非 `Test-Path` | `已解除（沙箱独立放行；本仓不可证伪）` |
+| **`GAP-012`** | `.git` **可解析但仓无 HEAD**（`git init` 后未提交的 unborn 仓）：新谓词要求的是「`.git` **有效**」而非「**有 HEAD**」⇒ 照旧锁死到该仓 ⇒ `:144` 取不到 HEAD ⇒ **静默**（既有、非本轮引入、本仓不可达） | 沙箱**覆盖例**（附录 D.11）：`ws` 为 **unborn 仓**（`rev-parse --git-dir` → `.git` **成功**、`--short HEAD` → **空 / exit 128**）+ 页写错 SHA → 守卫 **静默（stdout 空）**；**对照**同一 `ws` 补一次提交后同页同 SHA → **BLOCK**（"当前是 `4563627`"）⇒ 该静默是**真 fail-open，非死代码**。**同源旁证**（附录 D.10）：`ws/.git` **无效**时新码 **BLOCK** ⇒ 新谓词**确实**会否决候选（与 D.11 合读：洞在"`--git-dir` 成功但无 HEAD"这一格） | 接回目标布局时把谓词从「`.git` 有效」收紧为「**能取到 HEAD**」（或显式识别 unborn 并 emit 提示而非静默） | `未解除（潜在·本仓不可达）` |
+| **`GAP-013`** | **环境使判据失效**：① `GIT_DIR` 环境变量被设时，任意含 `.git` 的候选都会让 `--git-dir` 成功 ⇒ 谓词被**中和**；② `git` 不在 `PATH` 时 `CommandNotFoundException` 是**语句终止错误、不受作用域 EAP 约束** ⇒ 抛在 `Where-Object` 里 ⇒ 外层 `catch { exit 0 }` ⇒ **守卫静默死亡、零提示**（而本脚本**改用 PowerShell 的初衷正是** PATH 问题） | 本轮沙箱实测：`GIT_DIR` 未设（`''`），故 ①② 均为**读码 + 机制推演**，非本机实跑；`:144`/`:164` 未套作用域 EAP 的 git 调用已按同因补齐（附录 D.10） | ① 解析仓库前显式清空/忽略 `GIT_DIR`（或改用 `--git-dir` 显式参数）；② 缺 `git` 时 emit 明确的 `systemMessage`，不得静默 | `未解除（既有设计属性）` |
 | **`GAP-010`** | **运行态排除只在本机生效**——排除规则写在 `.git/info/exclude`（**本地文件、不随仓库分发**）⇒ clone 的人拿不到它，一建 `memory.md` / `record.md` / 进度页就容易**被 `git add -A` 带进提交**。而 §5 又明令「不要再往 `.gitignore` 里加框架忽略规则」——**那条理由（框架在仓外）只成立于目标布局**，本仓是自托管布局，两条规则互相拉扯（D4） | 排除痕迹实测（附录 D.8）：`git status --porcelain --ignored` 把 `memory.md` / `record.md` / `project-progress.html` / `project/` 四行标 `!!`，**这正是排除的来源是 `info/exclude`、而非任何随仓分发的文件** | 随仓库分发 `.gitignore`（只排运行态）+ §5 连带纪律改为**按布局条件化**（目标布局不加 / 自托管加） | **`已解除`**（本轮；附录 D.8 实测） |
 | **`GAP-011`** | **`README.md` 的「框架在仓库之外」叙述与自托管现状矛盾**（与 `GAP-010` 同源的 D4 错位）：该节称"放在仓库外使框架混进交付物**结构上不可能**、**不再依赖忽略规则是否写对**"——而本仓**就是**框架仓（`GAP-004` 已裁定「本仓即框架」），前提不存在；且这句与 `GAP-010` 刚落地的「运行态**由随仓库分发的 `.gitignore` 挡**」**直接冲突** | `README.md:261-263`（改前）：`**为什么把框架放在仓库之外**…不再依赖忽略规则是否写对。`（命令与输出见附录 D.9） | 改为**按布局成立**的表述：自托管布局下框架在仓内是**有意决定**，运行态改由 `.gitignore` 挡 | **`已解除`**（本轮；附录 D.9 实测） |
 
@@ -58,6 +60,8 @@
 **守卫边界留痕（`GAP-007` / `008` / `009`）**：**`GAP-007` 已独立放行**——`falsifier` 设计攻击、总控代跑，**两方向实测**（附录 D.7）：**T1**（`project/` 内 `git init` 空仓 + 页写错 SHA → **BLOCK**，未被内层仓劫持）+ **T10**（移除 `project/` + 页写错 SHA → **BLOCK**）。
 **`GAP-008` / `GAP-009` 为两条新边界**（证据同 D.7 的 T5 / T3）。**`GAP-008` 的边界（必须读，否则会被读成严重漏洞）**：**正常写作流程不会产生它**——页要么写 **7 位真短 SHA**、要么写 **40 位真全 SHA**，触发前提是"**页已被写错**"，即守卫本要抓的那种状态；故列为**已知边界**，**不是回归**。**`GAP-009` 如实标"潜在、当前不可达"**：`falsifier` 预测"静默"，**实测 T3 为 BLOCK，预测被推翻**；该洞仅**目标布局**可达，且属 `:133` 的**既有性质，非本轮引入**。
 > **本段已被后续修复取代（补记，不删）**：`GAP-008` / `GAP-009` **均已改判为 `修复待独立放行`**（见上「修复留痕」）。**`GAP-008` 不再是"已知边界"**——上述「正常写作流程不会产生它」的论证**只说明它不是回归，不说明不可修**，本轮已修。**`GAP-009` 的"当前不可达"亦不再成立**：新增的沙箱实测（`ws/.git` 为**悬空 gitfile**，`project/` 为真仓）使该候选路径**可达**，旧判据实测**静默**、新判据**BLOCK**——即**洞可达、已修、待独立放行**。
+
+**`GAP-009` 解除留痕（一行，`2026-10-09T16:31:03Z`）**：**沙箱独立放行**——本仓 `$ws` 恒有效且 `Select-Object -First 1` 使 `project/` 侧**连谓词都不求值** ⇒ **新旧判据在本仓逐字节相同**（无输入能使二者分叉），故放行**只能**在沙箱完成；沙箱结果：判别例1（空目录）/ 例2（悬空 gitfile）**新码 BLOCK**、**旧码 `c0d828e` 同布局静默**、反向对照（无 `.git`）**旧码 BLOCK** ⇒ 洞可达、新码有牙（附录 D.10）。**原条目文字不删**（证据链）。
 
 ## 二、附录 A · 登记前检索留痕（**撞车检查**）
 
@@ -137,6 +141,20 @@ $ git grep -n "GAP-011" -- AGENTS.md README.md CLAUDE.md .claude    # 除本台�
 ```
 
 **读法**：登记前全仓**零命中** ⇒ 该号未被占用，**不撞车**（D4）；登记后命中**全部落在本台账内**，别处仍零命中。拟用编号的取号依据是当时台账自述的最大号 `GAP-010`（本轮先登记，`GAP-011` 紧随其后）。
+
+### A.5 新增 `GAP-012` / `GAP-013` 的登记前检索（`2026-10-09T16:31:03Z`，实测）
+
+```
+$ git grep -n "GAP-01[2-9]" -- . ':!.claude/hooks/check-progress.ps1'   # 全仓，排除本轮新写的两行注释
+（无输出）  exit=1     ← 零命中（`exit=1` 是零命中约定，不是错误）
+
+$ git grep -n "GAP-012" -- . ':!.claude/hooks/check-progress.ps1'
+（无输出）  exit=1
+$ git grep -n "GAP-013" -- . ':!.claude/hooks/check-progress.ps1'
+（无输出）  exit=1
+```
+
+**读法**：`GAP-012` / `GAP-013` 在**别处零命中** ⇒ 未占用，**不撞车**（D4）；取号依据是当时台账自述的最大号 `GAP-011`（`:10`）。**口径（一句）**：排除 `check-progress.ps1` 是因为该文件刚被本轮加了 `GAP-012/013` 两行**新注释**——不排除则命中是**自证**，说明不了"别处有没有占号"；**并未**缩小检索范围。
 
 ## 三、附录 B · 证据抄录（**自包含，不依赖仓库外文件**）
 
@@ -466,3 +484,47 @@ exit=0
 ```
 
 **读法**：① `.gitignore` 已随仓库分发（`ls-files` 命中），三个运行态仍由它排除、`project/` 仍由本机 `info/exclude` 排除 ⇒ **分工在提交后依然成立**；② `--dry-run` 只剩本轮**该提交的两处**，说明**该进的在、该排的不在**；③ README 的旧叙述**已零活性命中**，D.9 同时充当 `GAP-011` 的解除证据。
+
+### D.10 `GAP-009` 沙箱独立放行 + `:144`/`:164` 补齐（`2026-10-09T16:31:03Z` 实跑）
+
+**口径**：**攻击由 `falsifier` 设计、命令由总控在 `%TEMP%` 沙箱代跑**（本仓不可证伪——`$ws` 恒有效 + `Select-Object -First 1` 使 `project/` 侧**连谓词都不求值**，故新旧判据在本仓**逐字节相同**）。**以下为台账维护方在本机复跑的同构实验**，读数一致。
+
+```
+sandbox = C:\Users\Yotoha\AppData\Local\Temp\gap009-83e4601d
+GIT_DIR env = ''                                     <- 环境未设，故 GAP-013① 非本机实跑
+2-commit repo at <ws>/project  short SHA = 2421fd8   <- 非空自证
+CASE1  ws/.git = EMPTY DIR            exit=0  stdout={"decision":"block","reason":"进度页落后于仓库：sandbox-progress.html 记录的 HEAD 是 0000000，而当前是 2421fd8。…"}
+CASE2  ws/.git = DANGLING GITFILE     exit=0  stdout={"decision":"block","reason":"…而当前是 2421fd8。…"}
+cleanup: Test-Path sandbox = False
+```
+
+**真仓只读探针**（未写任何文件）：
+
+```
+$ powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/check-progress.ps1
+（stdout 空）  guard exit=0                          <- 页与 HEAD 一致 ⇒ 非净回归
+ws             = D:\MyDocuments\ai-collaboration-framework
+ws/.git exists = True
+resolves to ws = .git                               <- 正序第一个候选即解析到工作区根
+short HEAD     = 61f63de
+```
+
+**读法（三条）**：① 两例均 BLOCK，且 `reason` 里的"当前是"是**沙箱 `project/` 仓**的短 SHA ⇒ 证明守卫**真用了第二候选**，而旧码 `c0d828e` 在同一布局**静默**（反向对照「无 `.git`」旧码 **BLOCK** ⇒ 洞可达、旧码非死代码）；② 归因解剖：同一句 `rev-parse --git-dir`，作用域 `EAP='Continue'` → `NO-THROW`，**裸形式（继承 `Stop`）→ `THROWN`**——这正是 `:144` / `:164` 未设防的成因；③ 本轮按**同形**给 `:144` / `:164` 各套一层作用域 EAP（**只加 3 行，其余逻辑未动**，`:145` 的 `if (-not $head) { exit 0 }` 仍在原位）。**不得把本附录读成 `GAP-012` / `GAP-013` 已实测**——`GAP-012` 的覆盖实测见 **D.11**；`GAP-013` 在本机**环境未设**（`GIT_DIR=''`、`git` 在 PATH），属**读码推演**，状态**未解除**。
+
+### D.11 `GAP-012` 的覆盖实测：unborn 仓致静默（`2026-10-09T16:31:03Z` 实跑，沙箱）
+
+**为何另起一例**：D.10 的两例把 `ws/.git` 造成**无效**（空目录 / 悬空 gitfile），`rev-parse --git-dir` **失败** ⇒ 新谓词**正确地否决**该候选——那证明的是"**无效 `.git` 不被采纳**"，**不是** `GAP-012` 的输入（"`.git` **有效**但**无 HEAD**"）。故本节用**真 unborn 仓**（`git init` 后**零提交**）覆盖该格；`project/` 为两提交真仓（`d731b2c`）以保证旧码会锁到它。
+
+```
+sandbox = C:\Users\Yotoha\AppData\Local\Temp\gap012-1a5825d8
+project/ real repo short SHA = d731b2c
+ws is UNBORN repo?  git -C ws rev-parse --git-dir -> .git          <- 谓词所需：成功
+ws HEAD (unborn)   rev-parse --short HEAD -> ''  exit=128          <- 但无 HEAD
+CASE-U  ws = UNBORN repo (no commits), page SHA wrong   exit=0  stdout=[]
+
+--- control: same ws now HAS 1 commit（加一次空提交，页面未动）---
+CASE-C  ws = committed repo, same wrong page SHA        exit=0  stdout=[{"decision":"block","reason":"…记录的 HEAD 是 0000000，而当前是 4563627。…"}]
+cleanup: Test-Path sandbox = False
+```
+
+**读法**：同一页面、同一错 SHA，**只因 `ws` 有没有 HEAD**，结果从**静默**翻转为 **BLOCK** ⇒ 该静默是**真 fail-open**（判据被绕过），**不是死代码**；`ws` 有提交时 `$ws` 被采纳且 `:144` 取到 HEAD，故 `project/` 侧连谓词都不求值——与 `GAP-012` 的推演一致。**本仓不可达**：本仓 `$ws` 恒为有 HEAD 的真仓（`61f63de`）。**触发前提**：有人在**工作区根**（而非 `project/`）`git init` 且**尚未提交**——与 `GAP-007` 是**同一族的"内层/外层仓混淆"**，只是这次的肇事者是工作区根自己。

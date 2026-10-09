@@ -141,7 +141,9 @@ try {
             Select-Object -First 1
     if (-not $repo) { exit 0 }
 
-    $head = (& git -C $repo rev-parse --short HEAD 2>$null)
+    # Same cause as :138 / :169 -- the outer `Stop` promotes a git stderr failure to a terminating error that the outer catch swallows (GAP-012/013).
+    $head = (& { $ErrorActionPreference = 'Continue'
+                 git -C $repo rev-parse --short HEAD 2>$null })
     if (-not $head) { exit 0 }
     $head = $head.Trim()
 
@@ -161,7 +163,8 @@ try {
     # `Stop`, a failed `--verify` (e.g. the id names a tree, not a commit) has git
     # write stderr and exit non-zero, which Stop promotes to a terminating error
     # that `2>$null` cannot stop; the outer catch then swallows it into silence.
-    $headFull = (& git -C $repo rev-parse HEAD 2>$null)
+    $headFull = (& { $ErrorActionPreference = 'Continue'
+                     git -C $repo rev-parse HEAD 2>$null })
     $recFull = (& { $ErrorActionPreference = 'Continue'
                     git -C $repo rev-parse --verify --quiet "$($recorded.ToLower())^{commit}" 2>$null })
     if ($recFull -and $headFull -and ($recFull.Trim() -eq $headFull.Trim())) { exit 0 }
