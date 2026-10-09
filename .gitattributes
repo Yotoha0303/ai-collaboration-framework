@@ -1,0 +1,25 @@
+# Normalize line endings so the framework reads the same on every platform.
+#
+# This is not cosmetic. The framework's own drift table records a real incident
+# caused by line endings: a coverage floor was calibrated from a CRLF checkout
+# and went red on CI's LF checkout, because the same source produced a different
+# number. The check-progress hook (`.claude/hooks/check-progress.ps1`) compares a
+# SHA read from a page against `git rev-parse`; anything that makes two machines
+# disagree about the same file is a bug waiting to happen in a framework whose
+# first discipline is "read it, do not infer it".
+#
+# Nothing here is about how the files are *edited* — editors may still write CRLF.
+# Git normalizes on commit and checkout.
+
+* text=auto eol=lf
+
+# PowerShell hooks are executed by Windows PowerShell, which is tolerant of LF.
+# Forcing LF keeps the file diffable against a Linux checkout.
+*.ps1   text eol=lf
+*.bat   text eol=crlf
+*.md    text eol=lf
+*.txt   text eol=lf
+*.json  text eol=lf
+
+# Keep the architecture diagram binary — never let git touch it.
+*.png   binary

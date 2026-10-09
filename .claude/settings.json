@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"$CLAUDE_PROJECT_DIR/.claude/hooks/check-progress.ps1\"",
+            "timeout": 15,
+            "statusMessage": "检查进度页是否落后于 HEAD"
+          }
+        ]
+      }
+    ]
+  }
+}
