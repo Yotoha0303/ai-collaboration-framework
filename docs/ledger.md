@@ -1,13 +1,13 @@
 # 未竟事项 · 唯一台账（`docs/ledger.md`）
 
-> **不在本台账里的"还没做"等于不存在**（出处：`AGENTS.md` §6）。收纳 **`GAP-` / `INC-` / `DEFER-`** 三类；`ADR-` 落 `docs/adr/`，`MIG-` 落 `backend/migrations/`（当前无对应物）。本仓为**自托管布局**，故本文件在仓内、属 ✅ 入库；**不引用仓库外文件**——证据的命令与输出**原样抄录在附录**，clone 的人可直接复核。
+> **不在本台账里的"还没做"等于不存在**（出处：`AGENTS.md` §6）。收纳 **`GAP-` / `INC-` / `DEFER-`** 三类；`ADR-` 落 `docs/adr/`，`MIG-` 落 `backend/migrations/`（当前无对应物）。本仓为**自托管布局**，故本文件在仓内、属 ✅ 入库；**不引用仓库外文件**——证据的命令与输出**原样抄录在附录**，clone 的人可直接复核。**D.8 的脚本可整段复制粘贴重跑**（只读，不改任何文件）。
 
 | 项 | 值 |
 | --- | --- |
-| 台账快照时间（UTC） | `2026-10-09T14:50:14Z`（实测 `(Get-Date).ToUniversalTime()`） |
-| 快照时 HEAD | `ad4e6c8`（全长 `ad4e6c8624e0553f1fe5e940ec83b0dddb891c02`） |
-| 快照时入库文件数 | `17`（`git ls-files` 行数实测） |
-| 已用 `GAP-` 最大号 | `GAP-009` |
+| 台账快照时间（UTC） | `2026-10-09T16:21:24Z`（实测 `(Get-Date).ToUniversalTime()`；前次 `2026-10-09T14:50:14Z`） |
+| 快照时 HEAD | `79791b4`（全长 `79791b47bd779ba0de90fcc42c7ad444184137a3`；前次 `ad4e6c8`） |
+| 快照时入库文件数 | `18`（`git ls-files` 行数实测；前次 `17`） |
+| 已用 `GAP-` 最大号 | `GAP-010` |
 | 已用 `INC-` / `DEFER-` | 无（`0`） |
 | 页名指针快照 | `.claude/progress-page.txt` → `project-progress.html`，字节 `112,…,108,10`，SHA256 `BF4B6899…B2ADE1` |
 
@@ -26,6 +26,7 @@
 | **`GAP-007`** | 守卫的**仓库解析顺序**把 `project/` 排在**工作区根之前**——`project/` 目录**存在但非仓库**时，一旦有人在其中 `git init`，守卫会锁定该**内层空仓** → 取不到 HEAD（unborn，`rev-parse` exit 128）→ **永久静默**，而静默正是它正常时的表现 | 对照实算（附录 D.6）：同一假 `.git` 下，**旧序**解析到 `…\project`，**新序**解析到工作区根；`git -C <新建空仓> rev-parse --short HEAD` → 空输出、**exit 128** | 候选顺序**对调**（优先工作区根），**保留两处候补**；改后重跑附录 C.2 用例 | **`已解除`**（**已独立放行**：`falsifier` 设计攻击、总控代跑 T1 + T10，两方向实测，附录 D.7） |
 | **`GAP-008`** | 守卫用**双向前缀**比对 SHA（`:150` `$head.StartsWith($recorded) -or $recorded.StartsWith($head)`），故「**真前缀 + 假后缀**（至 40 位）」被判为一致 → 放行伪造 SHA | 代跑实测（`record.md` `[2026-10-09T14:48:43Z]` 负向 T5，附录 D.7）：页写 `ad4e6c8000000000000000000000000000000000`（真前缀 `ad4e6c8` + 假后缀）→ 守卫 **stdout 空、静默**，本该认出"这不是 HEAD" | 若需覆盖：把"页长 > 7 且 ≥ 前缀"的**歧义**情形改判为不静默；**判定前须人工裁定**（可能得不偿失，见右侧边界） | `已修（二次修复：--verify 须降级 EAP）` |
 | **`GAP-009`** | 守卫判仓库用的是 `.git` 的**存在性**而非**有效性**（`:133` `Test-Path (Join-Path $_ '.git')`）：若 `project/.git` 是**空目录**（非有效仓），被选中即 `rev-parse` 失败 → 静默 | **潜在、当前布局不可达**：实测 T3 **BLOCK**（`record.md` `[2026-10-09T14:48:43Z]`，附录 D.7）—— 新序 `@($ws, project)` 令 `$ws` 先命中，**空目录根本不被咨询**；`falsifier` 预测"静默"**被实测推翻**。仅**目标布局**（工作区根无 `.git`、仓真在 `project/`）下可达。**该性质属 `:133` 既有，非本轮引入** | 接回目标布局时改为校验 `.git` **有效**（如 `git -C <cand> rev-parse --git-dir` 成功才采纳），而非 `Test-Path` | `修复待独立放行` |
+| **`GAP-010`** | **运行态排除只在本机生效**——排除规则写在 `.git/info/exclude`（**本地文件、不随仓库分发**）⇒ clone 的人拿不到它，一建 `memory.md` / `record.md` / 进度页就容易**被 `git add -A` 带进提交**。而 §5 又明令「不要再往 `.gitignore` 里加框架忽略规则」——**那条理由（框架在仓外）只成立于目标布局**，本仓是自托管布局，两条规则互相拉扯（D4） | 排除痕迹实测（附录 D.8）：`git status --porcelain --ignored` 把 `memory.md` / `record.md` / `project-progress.html` / `project/` 四行标 `!!`，**这正是排除的来源是 `info/exclude`、而非任何随仓分发的文件** | 随仓库分发 `.gitignore`（只排运行态）+ §5 连带纪律改为**按布局条件化**（目标布局不加 / 自托管加） | **`已解除`**（本轮；附录 D.8 实测） |
 
 > **附注（`GAP-009` 同源，一行）**：`AGENTS.md` 把 `$REPO` 指向 §0.0 的 `git rev-parse --show-toplevel`，而该命令**只向上找**——在**目标布局**（仓在 `project/` 子目录）下**报错**。
 > 即 hook 的解析规则与文档声明的规则**在目标布局下不一致**（D4 类：两处不同成熟度的规则）。
@@ -39,6 +40,9 @@
 > **`GAP-008` 边界（`falsifier` 指出，一行）**：正则 `{7,40}` **假定对象 id ≤ 40 位**；`--object-format=sha256` 的仓（**64 位** id）下**即使页面写的是完全正确的 SHA 也永不匹配** → 走「无标记静默」（**永久静默**）。本仓为 **sha1，不影响**；该边界**非本次引入**。
 
 **`GAP-002` 残余（已接受的代价）**：**指针指向不存在的页名**时仍静默——它与"页确实缺失（尚未初始化）"在观测上**不可分**，故**不报**（理由见 `AGENTS.md` §5）；**缓解后新行为**：指针**存在但读不出页名**（空 / 全空白 / 不可读）→ emit `systemMessage`。
+
+**`GAP-010` 解除留痕**：本仓新增**随仓库分发**的 `.gitignore`（只排运行态三行）；`AGENTS.md` §5 连带纪律改为**按布局条件化**（目标布局不加——框架在仓外，规则永不命中；自托管布局应当加，只排运行态，**不得**排交付物与框架源）；本机专属的 `project/` **仍**只走 `.git/info/exclude`，**不写入** `.gitignore`，并在文件内以注释写明该分工。实测见**附录 D.8**。
+> **口径（一句）**：本条**不声称守卫类"有牙/无牙"**——`.gitignore` 是**声明式**规则，其证据形态是 `git check-ignore -v` 与 `git add -A --dry-run` 的**真实输出**（D1：「读到才算」），**不是**负向注入（`AGENTS.md` §5「跑两个用例」那条纪律的**范围是进度页守卫脚本**，不适用于本文件）。**已接受的代价**：进度页改名后 `.gitignore` 里那一行会**静默失效**（旧规则不命中，但不会有任何报错）——已在文件内注释中写明"改名请同步这一行"。
 
 **`GAP-003` / `GAP-004` 解除留痕**：两条动作**均已落地**，实测见**附录 D.3 / D.4**。**D3 判据不得自审**——改判据者（实现方）不得自放行，故 `GAP-003` 的「`已解除`」是**实现侧口径**，独立复核须**另派只读方**（`falsifier`）补记。**不删原条目**：已发生的事实是**证据链**，不是待办事项。
 
@@ -89,6 +93,30 @@ $ git grep -n "GAP-010"   -> （无输出） exit=1     ← 零命中
 ```
 
 **读法**：**除本台账外**共 **6 行**命中，**全部是引用既有编号**，最大号只到 `GAP-005`；本台账当时登记到 `GAP-007`。三条拟用编号均**零命中**（`exit=1` 是零命中约定，不是错误）⇒ 新号从 **`GAP-008`** 起，**不撞车**（D4）。
+
+### A.3 新增 `GAP-010` 的登记前检索（2026-10-09T16:21Z 前后，实测）
+
+```
+$ git grep -n "GAP-[0-9]"                                  # 全仓（含本台账）
+（75 行；其中 67 行在本台账内）
+
+$ git grep -n "GAP-[0-9]" -- AGENTS.md README.md CLAUDE.md .claude    # 去掉本台账后的命中：8 行
+.claude/hooks/check-progress.ps1:25:# IS the repo, so the framework files sit in the repo by design (GAP-004: the
+.claude/hooks/check-progress.ps1:105:    # silent fallback this replaces is the GAP-002 defect.
+.claude/hooks/check-progress.ps1:133:    # (GAP-009). The scoped EAP keeps git's stderr off the outer catch, which
+.claude/hooks/check-progress.ps1:150:    # to the "no HEAD marker" silence (GAP-008).
+.claude/hooks/check-progress.ps1:155:    # Resolve both sides to FULL commit ids and compare those (GAP-008): any two
+AGENTS.md:294:> **本仓即框架**（人工裁定，见 `"$REPO"/docs/ledger.md` 的 `GAP-004`）：本仓库**就是框架自身的仓**，
+AGENTS.md:380:> 残余风险见台账 `GAP-002`。
+README.md:163:> 这是**显式分工**，不是降级；但它引入了一条新缝隙，**已登记为 `GAP-005`**
+exit=0
+
+$ git grep -n "GAP-010" -- AGENTS.md README.md CLAUDE.md .claude     # 除本台账外
+（无输出）  exit=1     ← 零命中
+```
+
+**读法**：**除本台账外** 8 行命中，**全部是引用既有编号**（`004`·`002`·`009`·`008`·`008`·`004`·`002`·`005`），**最大号只到 `GAP-009`**；本台账自述的最大号亦为 `GAP-009`（`:10`）。拟用编号 `GAP-010` 在**别处零命中**（`exit=1` 是零命中约定，不是错误）⇒ 新号取 **`GAP-010`**，**不撞车**（D4）。
+**口径（一句）**：本次检索**含本台账自身**（故 75 行），与登记前**排除本台账**的那次（8 行）**范围不同**，两者**不可直接比较**；排除本台账只为看清"**别处**有没有占号"，**并未**缩小检索范围。
 
 ## 三、附录 B · 证据抄录（**自包含，不依赖仓库外文件**）
 
@@ -341,3 +369,45 @@ T6  页写 AD4E6C8  -> 静默          既定边界：正则 [0-9a-f] 不匹配�
 **还原复核**：指针 SHA256 = `BF4B6899…B2ADE1` **逐字节完好**；`project/` 仅剩 `README.md`，无残留。
 
 **引 `record.md` 对应行**：`[2026-10-09T14:48:43Z]` 的 `T1` · `T10` · `T5` · `T3` · `T6` · `还原复核` 六行（运行态记录**不随本仓分发**，故本附录将其**命令与读数**抄录如上，使结论**可复核**）。**D.6 的"实现侧口径"至此闭合**：`GAP-007` 的独立放行**已取得**。
+
+### D.8 `GAP-010` 的证据：运行态排除的来源，以及它随分发而变（2026-10-09T16:23Z 实跑）
+
+**以下整段可在 clone 的检出里直接跑**（只读；`?? .gitignore` 之所以是 `??`，只因为本轮尚未提交——提交后同法复核应显示 `git ls-files` 含 `.gitignore`）。
+
+```
+$ git check-ignore -v memory.md record.md project-progress.html project
+.gitignore:3:memory.md	memory.md
+.gitignore:4:record.md	record.md
+.gitignore:5:project-progress.html	project-progress.html
+.git/info/exclude:15:project/	project
+exit=0
+
+$ git add -A --dry-run
+add 'AGENTS.md'
+add 'docs/ledger.md'
+add '.gitignore'
+exit=0
+
+$ git status --porcelain
+ M AGENTS.md
+ M docs/ledger.md
+?? .gitignore
+
+$ git status --porcelain --ignored
+ M AGENTS.md
+ M docs/ledger.md
+?? .gitignore
+!! memory.md
+!! project-progress.html
+!! project/
+!! record.md
+
+$ git ls-files | wc -l
+17            （本轮尚未提交；提交后含 .gitignore 应为 18——首次 `git ls-files` 的迟滞，非缺口）
+```
+
+**读法（三条，各自可独立复核）**：
+
+1. **排除来源已分家**：三个运行态文件由 **`.gitignore:3/4/5`** 命中——**这个文件随仓库分发**，clone 的人拿到同一套规则；`project/` 由 **`.git/info/exclude:15`** 命中——**本机专属**，**刻意不随分发**（别人的 fork 里未必有 `project/`，写进 `.gitignore` 就是"指不到东西的引用"）。
+2. **`--dry-run` 有牙**：它会把**将要提交**的东西逐条列出——`memory.md` / `record.md` / `project-progress.html` **一条都没有出现**，而 `AGENTS.md`（框架源）、`docs/ledger.md`（交付物）、`.gitignore`（框架文件）**都在**。即：**该排的被排掉，该进的照常进**。
+3. **`--ignored` 是必需的第二只眼**：单看 `--dry-run` **分不清**"被规则排除"与"碰巧不存在"（后者同样不出现）。`--ignored` 把四个名字显式标成 `!!` ⇒ 它们是**存在且被排除**，不是"没有"。**只跑前者会把"文件根本不存在"读成"围栏有效"**——正是 `AGENTS.md` §8 那类判据夹缝。

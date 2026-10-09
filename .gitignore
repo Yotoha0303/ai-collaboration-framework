@@ -1,0 +1,10 @@
+# AI 运行态：框架自己的记账，不入交付物（AGENTS.md §5）
+# 进度页名字会变——改名后请同步这一行（页名由 .claude/progress-page.txt 指定）
+memory.md
+record.md
+project-progress.html
+
+# 分工说明：本机的外部项目目录 project/ 刻意【不】写在这里——
+# 别人的 fork 里未必有它，写进来就成了"指不到东西的引用"。
+# 它只由本机的 .git/info/exclude 排除，不随仓库分发。
+# 本文件只随仓库分发"运行态"这一条规则：交付物与框架源必须照常入库。
