@@ -120,9 +120,16 @@ try {
     # so exit silently (human decision; see AGENTS.md section 5).
     if (-not $page) { exit 0 }
 
-    # The repo is the `project/` child; the second candidate is the pre-move
-    # layout, where the directory holding `.claude/` IS the repo.
-    $repo = @((Join-Path $ws 'project'), $ws) |
+    # The repo is the directory holding `.git`. Both layouts are supported: the
+    # workspace root itself (self-hosted, the usual case here) and a `project/`
+    # child (target layout).
+    # ORDER MATTERS -- workspace root FIRST. A `project/` directory that merely
+    # EXISTS is not a repo; if it were tried first and someone later ran
+    # `git init` inside it, this guard would lock onto that inner, EMPTY repo,
+    # find no HEAD, and go permanently silent -- which is exactly what it looks
+    # like when it works. Both candidates stay: a fail-closed guard must not go
+    # quietly dead when the layout shifts.
+    $repo = @($ws, (Join-Path $ws 'project')) |
             Where-Object { Test-Path -LiteralPath (Join-Path $_ '.git') } |
             Select-Object -First 1
     if (-not $repo) { exit 0 }

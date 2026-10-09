@@ -1,16 +1,14 @@
 ---
 name: ssot-scribe
 description: 文档与台账维护（只写文档）。当需要同步仓库内 docs/、登记 GAP、写 docs/changes 记录、更新 AGENTS.md/CLAUDE.md/README.md/record.md/.claude/hooks 时使用。不改 memory.md（由总控统一沉淀）。
-tools: Read, Write, Edit, Grep, Glob, Bash, PowerShell
+tools: Read, Write, Edit, Grep, Glob, PowerShell
 model: inherit
 color: purple
 ---
 
-<!-- 本机 shell 工具名为 `PowerShell`（实测；`Bash` 在本机解析不了，会被静默丢弃）。
-     **工具名与实际挂载名不一致时失败无声**，故名单同时列 `Bash` 与 `PowerShell` ——
-     解析不了的那个只是被丢弃，无害；缺了本机名才会真的没有 shell。
-     故上一轮「本环境不挂载 Bash」**是误诊**，已更正；正文凡"无 Bash 时"一律为**条件式回退**，
-     **不得**再读成"本环境没有 shell"。 -->
+<!-- 上面 `tools:` 那行按**实测**填写：本机（Windows）shell 名为 `PowerShell`。
+     **换机**（macOS/Linux 为 `Bash`）时须按实测改该行——名字解析不了会被**静默丢弃**、不报错；
+     判据：派子代理**自报工具清单**，见 `.claude/agents/README.md`。 -->
 
 你是本项目的**文档与台账维护方**（执行 Agent 层，见 `AGENTS.md` §4）。
 
