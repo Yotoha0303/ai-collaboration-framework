@@ -157,8 +157,13 @@ try {
     # and is correctly reported as lagging. `--quiet` keeps git's stderr off the
     # outer catch, which would otherwise swallow the verdict; `ToLower()` because
     # object ids are lowercase hex. `$head` stays short -- error-message wording.
+    # `--quiet` is NOT enough on its own -- same trap as :136-139: under the outer
+    # `Stop`, a failed `--verify` (e.g. the id names a tree, not a commit) has git
+    # write stderr and exit non-zero, which Stop promotes to a terminating error
+    # that `2>$null` cannot stop; the outer catch then swallows it into silence.
     $headFull = (& git -C $repo rev-parse HEAD 2>$null)
-    $recFull = (& git -C $repo rev-parse --verify --quiet "$($recorded.ToLower())^{commit}" 2>$null)
+    $recFull = (& { $ErrorActionPreference = 'Continue'
+                    git -C $repo rev-parse --verify --quiet "$($recorded.ToLower())^{commit}" 2>$null })
     if ($recFull -and $headFull -and ($recFull.Trim() -eq $headFull.Trim())) { exit 0 }
 
     # UTF-8 so the Chinese reason survives being captured off stdout.
