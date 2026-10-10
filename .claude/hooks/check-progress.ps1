@@ -17,6 +17,21 @@
 #                          measured: the user reported not seeing it, so both
 #                          notice-only branches use exit 1 + stderr instead.)
 #
+# THE ONE RULE THIS FILE FOLLOWS (read this before editing any git call):
+# every git call whose result decides anything is judged by its EXIT CODE == 0.
+# Output is a PAYLOAD only and is NEVER the criterion. Three separate silent
+# failures were measured from breaking that rule — one family, not three bugs:
+#   - `Get-Command git` proves only that the NAME RESOLVES. A zero-byte git.exe
+#     on PATH passes it and throws ApplicationFailedException at call time.
+#   - taking the TRUTHINESS OF THE OUTPUT instead of the exit code: a shim that
+#     prints nothing and exits 0 was read as "git unusable" (false alarm).
+#   - comparing the OUTPUTS of `rev-parse HEAD` and `rev-parse --verify` as
+#     STRINGS: a shim that always exits 128 while printing a constant made both
+#     sides equal garbage -> judged "in sync" -> silent exit 0.
+# Patching those one at a time kept missing the next one, so the rule is
+# structural: ALL git calls go through `Invoke-GitChecked`, which is the ONLY
+# place a git exit code is read. `.Exit` is the criterion; `.Text` is payload.
+#
 # Why PowerShell and not bash: if Git for Windows lives somewhere that keeps
 # `usr\bin` off the Windows PATH, a hook command of
 # `bash ...` fails with "not recognized". System32 is always on PATH, so
@@ -65,6 +80,50 @@
 # "no criterion applies" rather than "the script is dead".
 
 $ErrorActionPreference = 'Stop'
+
+# UTF-8 for BOTH channels, and it must happen BEFORE either is written: the
+# notice-only branches write Chinese to stderr and the block path writes Chinese
+# to stdout, so one shared setting covers both (D4: two branches, one form).
+# Wrapped in try/catch on purpose — this setter throws on a host that cannot
+# change the console encoding, and an unguarded throw here would kill the guard
+# (measured: the A7-f2 case, where an unguarded setter turned the BLOCK path
+# silent). Measured under chcp 936: with this line the stderr Chinese is valid
+# UTF-8 and readable; without it the same bytes come out as GBK mojibake, or as
+# '?' on code pages that cannot represent the characters at all.
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
+
+# The ONLY place a git exit code is read. Everything that decides something
+# calls this and tests `.Exit -eq 0`.
+#
+# `$script:` is deliberate, and it is measured rather than assumed: a scriptblock
+# invoked with `& { }` runs in a CHILD scope that can READ the enclosing script
+# scope but whose unqualified assignments land in that child scope and are lost.
+# Writing `$script:__gitExit` is what carries the code back out. (Measured on
+# this machine, Windows PowerShell 5.1.19041.6456 + git 2.49.0.windows.1:
+# `$LASTEXITCODE` itself does survive a plain `& { }` into the parent scope, but
+# NOT through an assignment that would otherwise be scoped to the child, so the
+# explicit `$script:` write is what makes the helper immune to the difference.)
+function Invoke-GitChecked {
+    param([scriptblock]$GitCall)
+    $script:__gitExit = $null
+    $out = $null
+    try {
+        # Scoped EAP: a native command's non-zero exit writes stderr, and the
+        # outer `Stop` would promote that to a terminating error which the outer
+        # catch swallows into silence. This scoped EAP covers THAT case only — it
+        # does NOT cover "command not found" (CommandNotFoundException), which is
+        # a statement-terminating error and is handled by the catch below.
+        $out = & { $ErrorActionPreference = 'Continue'; & $GitCall; $script:__gitExit = $LASTEXITCODE }
+    } catch {
+        # A git that cannot even be launched lands here: CommandNotFoundException
+        # (git not on PATH), or the ApplicationFailedException of a zero-byte /
+        # truncated git.exe. Leaving Exit as $null keeps `.Exit -eq 0` false —
+        # fail closed, never silent.
+        $script:__gitExit = $null
+        $out = $null
+    }
+    return [pscustomobject]@{ Exit = $script:__gitExit; Text = [string]::Join("`n", @($out)).Trim() }
+}
 
 try {
     # <workspaceRoot>/.claude/hooks/check-progress.ps1  ->  <workspaceRoot>
@@ -118,6 +177,42 @@ try {
     # so exit silently (human decision; see AGENTS.md section 5).
     if (-not $page) { exit 0 }
 
+    # git unusable -> the notice-only channel (exit 1 + stderr), NOT silence and
+    # NOT `decision:block`. Missing git means the guard CANNOT TELL whether the
+    # page lags, so blocking every turn would make the framework unusable; and
+    # the failure must be visible, which is why it is not silent.
+    #
+    # Probe FUNCTIONALLY and BY EXIT CODE: `Get-Command git` only proves the name
+    # RESOLVES — a zero-byte or truncated git.exe on PATH passes it and then
+    # fails at call time (GAP-013-2), and judging the probe by the truthiness of
+    # its OUTPUT misreads a silent-but-working git as broken. `Invoke-GitChecked`
+    # returns $null for `.Exit` when the command cannot be launched at all, and
+    # `$null -eq 0` is false, so both failure shapes land on the same branch.
+    $gitOk = ((Invoke-GitChecked { git --version 2>$null }).Exit -eq 0)
+    if (-not $gitOk) {
+        [Console]::Error.WriteLine("进度页守卫未运行：PATH 上的 git 不可用（缺失或无法执行）。本轮未检查进度页是否落后。")
+        exit 1
+    }
+
+    # NEGATIVE CANARY (the dual of the probe above). The probe demands "this MUST
+    # SUCCEED"; the canary demands "this MUST FAIL". Together they force the
+    # binary to return DIFFERENT exit codes for two different inputs, which is
+    # what makes the exit code trustworthy rather than merely assumed: a shim
+    # that always exits 0 passes the probe and is caught here; a shim that always
+    # exits non-zero is caught by the probe. A positive probe alone leaves "the
+    # exit code means something" as an ASSUMPTION -- with the canary it becomes a
+    # CRITERION.
+    #
+    # The input is an all-zero object id, which names no object in any repo, so
+    # `--verify` must fail. Same shape as every other git call here: it goes
+    # through `Invoke-GitChecked`, the single place an exit code is read, and it
+    # is judged by `.Exit` alone.
+    $canary = Invoke-GitChecked { git rev-parse --verify --quiet "0000000000000000000000000000000000000000^{commit}" 2>$null }
+    if ($canary.Exit -eq 0) {
+        [Console]::Error.WriteLine("进度页守卫未运行：PATH 上的 git 退出码不可信（对必定失败的输入仍返回 0）。本轮未检查进度页是否落后。")
+        exit 1
+    }
+
     # The repo is the directory holding `.git`. Both layouts are supported: the
     # workspace root itself (self-hosted, the usual case here) and a `project/`
     # child (target layout).
@@ -127,37 +222,28 @@ try {
     # find no HEAD, and go permanently silent -- which is exactly what it looks
     # like when it works. Both candidates stay: a fail-closed guard must not go
     # quietly dead when the layout shifts.
-    # git unusable -> every rev-parse below throws CommandNotFoundException, which the
-    # scoped EAP does NOT catch (it covers a native command's non-zero exit, not "command
-    # not found"), so the outer catch would swallow it and the guard would die silently.
-    # Probe FUNCTIONALLY: Get-Command only proves the name RESOLVES -- a zero-byte or
-    # truncated git.exe on PATH passes it and then fails at call time (GAP-013②).
-    $gitOk = $false
-    try {
-        $gitOk = [bool](& { $ErrorActionPreference = 'Continue'; git --version 2>$null })
-    } catch { $gitOk = $false }
-    if (-not $gitOk) {
-        [Console]::Error.WriteLine("进度页守卫未运行：PATH 上的 git 不可用（缺失或无法执行）。本轮未检查进度页是否落后。")
-        exit 1
-    }
-
+    #
     # A candidate must RESOLVE as a git repo, not merely hold a `.git` entry
-    # (GAP-009). The scoped EAP keeps git's stderr off the outer catch, which
-    # would otherwise swallow this fail-closed check.
-    $repo = @($ws, (Join-Path $ws 'project')) |
-            Where-Object {
-                (Test-Path -LiteralPath (Join-Path $_ '.git')) -and
-                (& { $ErrorActionPreference = 'Continue'
-                     git -C $_ rev-parse --git-dir 2>$null })
-            } |
-            Select-Object -First 1
+    # (GAP-009) — and "resolve" means the call EXITS 0, judged by exit code like
+    # every other git call here (a non-zero exit used to be swallowed into
+    # silence by the outer `Stop` + catch; the helper's scoped EAP is what keeps
+    # git's stderr off that outer catch).
+    $repo = $null
+    foreach ($cand in @($ws, (Join-Path $ws 'project'))) {
+        if (-not (Test-Path -LiteralPath (Join-Path $cand '.git'))) { continue }
+        if ((Invoke-GitChecked { git -C $cand rev-parse --git-dir 2>$null }).Exit -eq 0) { $repo = $cand; break }
+    }
     if (-not $repo) { exit 0 }
 
-    # SHAPED like the other scoped-EAP sites above but NOT proven to have teeth (GAP-012/013): on unborn input the scoped EAP and the bare form land on the same silent `exit 0`; kept only because it is harmless and matches the other three sites -- NOT claimed to close a failure path.
-    $head = (& { $ErrorActionPreference = 'Continue'
-                 git -C $repo rev-parse --short HEAD 2>$null })
+    # Judged by exit code. On unborn input (a `git init` with no commit yet) git
+    # exits 128, so this exits silently exactly as the old truthiness test did on
+    # its empty output — the same landing, now for a stated reason (GAP-012: a
+    # repo that resolves but has no HEAD is still silent; kept as-is, not
+    # claimed to be closed).
+    $headProbe = Invoke-GitChecked { git -C $repo rev-parse --short HEAD 2>$null }
+    if ($headProbe.Exit -ne 0) { exit 0 }
+    $head = $headProbe.Text
     if (-not $head) { exit 0 }
-    $head = $head.Trim()
 
     $content = Get-Content -LiteralPath $page -Raw
     # Case-insensitive: an uppercase SHA must still be COMPARED, not fall through
@@ -168,21 +254,21 @@ try {
     $recorded = $m.Groups[1].Value
     # Resolve both sides to FULL commit ids and compare those (GAP-008): any two
     # spellings naming the same commit match, while a fake SHA fails to resolve
-    # and is correctly reported as lagging. `--quiet` keeps git's stderr off the
-    # outer catch, which would otherwise swallow the verdict; `ToLower()` because
-    # object ids are lowercase hex. `$head` stays short -- error-message wording.
-    # `--quiet` is NOT enough on its own -- same trap as the repo-resolution check above: under the outer
-    # `Stop`, a failed `--verify` (e.g. the id names a tree, not a commit) has git
-    # write stderr and exit non-zero, which Stop promotes to a terminating error
-    # that `2>$null` cannot stop; the outer catch then swallows it into silence.
-    $headFull = (& { $ErrorActionPreference = 'Continue'
-                     git -C $repo rev-parse HEAD 2>$null })
-    $recFull = (& { $ErrorActionPreference = 'Continue'
-                    git -C $repo rev-parse --verify --quiet "$($recorded.ToLower())^{commit}" 2>$null })
-    if ($recFull -and $headFull -and ($recFull.Trim() -eq $headFull.Trim())) { exit 0 }
-
-    # UTF-8 so the Chinese reason survives being captured off stdout.
-    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    # and is correctly reported as lagging. `--quiet` keeps git's stderr quiet,
+    # and the helper's scoped EAP keeps a failed `--verify` (e.g. the id names a
+    # tree, not a commit) from being promoted to a terminating error that the
+    # outer catch would swallow into silence. `ToLower()` because object ids are
+    # lowercase hex. `$head` stays short -- error-message wording.
+    #
+    # BOTH SIDES ARE JUDGED BY EXIT CODE, and the outputs are compared only as
+    # payload: comparing the two OUTPUTS as strings was itself a silent path —
+    # a shim that always exits 128 while printing a constant made both sides
+    # equal garbage and the guard called it "in sync" (the V13 case). A non-zero
+    # exit on either side means the id did not resolve, which is a LAGGING page,
+    # not a reason to fall silent.
+    $headFullProbe = Invoke-GitChecked { git -C $repo rev-parse HEAD 2>$null }
+    $recFullProbe = Invoke-GitChecked { git -C $repo rev-parse --verify --quiet "$($recorded.ToLower())^{commit}" 2>$null }
+    if (($headFullProbe.Exit -eq 0) -and ($recFullProbe.Exit -eq 0) -and ($headFullProbe.Text -eq $recFullProbe.Text)) { exit 0 }
 
     $reason = "进度页落后于仓库：$name 记录的 HEAD 是 $recorded，而当前是 $head。" +
               "请先更新该页面再结束本轮——按 AGENTS.md 的交付约定，进度页要与代码同成熟度。" +
