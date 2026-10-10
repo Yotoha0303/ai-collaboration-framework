@@ -45,7 +45,7 @@
 
 > 若第 2 项落空，八成是**启动目录不是本工作区**——Claude Code 的三条查找路径
 > （`AGENTS.md` / `.claude/agents/` / `settings.json`）**只向启动目录及其上层扫描，从不向下看**。
-> 用 `AI_tools/start_claude.bat` 启动即可锁定；详见 `AGENTS.md` §0.0。
+> 用 `launchers/start_claude.bat`（Windows）/ `launchers/start_claude.sh`（Linux/macOS）启动即可锁定；详见 `AGENTS.md` §0.0。
 
 ---
 

@@ -16,6 +16,8 @@
 # PowerShell hooks are executed by Windows PowerShell, which is tolerant of LF.
 # Forcing LF keeps the file diffable against a Linux checkout.
 *.ps1   text eol=lf
+# CRLF breaks the shebang on Linux.
+*.sh    text eol=lf
 *.bat   text eol=crlf
 *.md    text eol=lf
 *.txt   text eol=lf

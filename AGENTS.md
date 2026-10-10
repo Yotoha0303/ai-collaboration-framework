@@ -45,7 +45,7 @@
 > **启动前提（易错，实测踩过）**：Claude Code 的 `AGENTS.md` / `.claude/agents/` / `settings.json`
 > 三条查找路径**全部只向启动目录及其上层扫描，从不向下看**。故**必须从工作区根启动**，
 > 否则本文件与子代理层会一起**静默落空**——没有报错，只是框架像不存在。
-> **启动器**：`AI_tools/start_claude.bat`（`cd /d "%~dp0.."`）——不加这行 `cd`，双击时 CWD 取**资源管理器位置**而非脚本位置，启动位置**随双击位置漂移**，框架随之静默失效。
+> **启动器**：`launchers/start_claude.bat`（Windows）/ `launchers/start_claude.sh`（Linux/macOS）（`cd /d "%~dp0.."`）——不加这行 `cd`，双击时 CWD 取**资源管理器位置**而非脚本位置，启动位置**随双击位置漂移**，框架随之静默失效。
 
 ### 0.1 文件角色
 

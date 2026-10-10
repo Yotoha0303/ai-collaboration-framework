@@ -186,8 +186,8 @@ prompts/
   progress-page.txt              一行。进度页文件名的唯一事实源
   agents/*.md                    已实例化的角色
 
-AI_tools/
-  start_claude.bat               启动器（锁定工作目录，见 §八）
+launchers/
+  start_claude.bat / start_claude.sh   启动器：锁定工作目录（见 §八）
 
 docs/
   ledger.md                      未竟事项**唯一**台账（GAP/INC/DEFER）。**不在台账里的"还没做"等于不存在**
@@ -250,8 +250,10 @@ Claude Code 的三条查找路径——`AGENTS.md` / `.claude/agents/` / `settin
 2. **`.claude/` 需在会话启动时已存在**才会被加载。
    会话中途新增/移动 `.claude/`，**需打开一次 `/hooks` 重载，或重启会话**——
    当会话内不要指望它。
-3. **启动器**：[`AI_tools/start_claude.bat`](AI_tools/start_claude.bat) 用 `cd /d "%~dp0.."`
-   锁定工作目录。双击 `.bat` 时，CWD 取资源管理器位置而非脚本位置，
+3. **启动器**：[`launchers/start_claude.bat`](launchers/start_claude.bat)（Windows）与
+   [`launchers/start_claude.sh`](launchers/start_claude.sh)（Linux/macOS）各自先 `cd` 到工作区根
+   （`cd /d "%~dp0.."` / `cd "$(dirname "$0")/.."`）来锁定工作目录。
+   双击 `.bat` 时，CWD 取资源管理器位置而非脚本位置，
    所以「不加 `cd` 的启动器」会让启动位置**随双击位置漂移**。
    （这个坑真实踩过：框架静默失效，排查后发现启动器全文只有一行 `claude`，没有 `cd`。）
 4. **排障**：用 `/context` 查看 **Memory files** 是否列出了 `AGENTS.md`。

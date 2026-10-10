@@ -214,6 +214,8 @@ prompts/角色契约.md
 exit=0
 ```
 
+> 采集时点快照：当时目录名为 AI_tools/，现已更名为 launchers/（不改写原快照）。
+
 其中 `AGENTS.md` / `CLAUDE.md` / `prompts/*` / `.claude/*` 正是 §5 表格里原标「❌ 不入仓库」的**框架文件与运行态**，它们**确实在仓库里**。**补充实测**：`Test-Path .gitignore` → `False`（本仓**无 `.gitignore`**）。
 
 ### B.3 `GAP-006` 的证据：该环无对应物
