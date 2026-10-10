@@ -4,9 +4,9 @@
 
 | 项 | 值 |
 | --- | --- |
-| 台账快照时间（UTC） | `2026-10-10T08:08:02Z`（实测 `(Get-Date).ToUniversalTime()`；前次=`2026-10-10T07:58:04Z`） |
-| 快照时 HEAD | `2b7c000`（全长 `2b7c0009e779071ae6bf0639a78a1e47650a63f2`；前次=`9ce688b`） |
-| 快照时入库文件数 | `19`（`git ls-files` 行数实测；含 `.gitignore`；前次=`19`，本轮只改本文件，无增删） |
+| 台账快照时间（UTC） | `2026-10-10T08:50:02Z`（实测 `(Get-Date).ToUniversalTime()`；前次=`2026-10-10T08:27:58Z`） |
+| 快照时 HEAD | `d867d60`（全长 `d867d601cf7a6dc67c415863ff5e26540d7ecf91`；前次=`d867d60`，本轮未提交） |
+| 快照时入库文件数 | `19`（`git ls-files` 行数实测；含 `.gitignore`；前次=`19`，本轮只改守卫与本文件，无增删） |
 | 已用 `GAP-` 最大号 | `GAP-014`（前次=`GAP-013`） |
 | 已用 `DEFER-` 最大号 | `DEFER-003`（新增；前次=`0`，即从未用过） |
 | 已用 `INC-` | 无（`0`） |
@@ -28,7 +28,7 @@
 | **`GAP-008`** | 守卫用**双向前缀**比对 SHA（`:150` `$head.StartsWith($recorded) -or $recorded.StartsWith($head)`），故「**真前缀 + 假后缀**（至 40 位）」被判为一致 → 放行伪造 SHA | 代跑实测（`record.md` `[2026-10-09T14:48:43Z]` 负向 T5，附录 D.7）：页写 `ad4e6c8000000000000000000000000000000000`（真前缀 `ad4e6c8` + 假后缀）→ 守卫 **stdout 空、静默**，本该认出"这不是 HEAD" | 若需覆盖：把"页长 > 7 且 ≥ 前缀"的**歧义**情形改判为不静默；**判定前须人工裁定**（可能得不偿失，见右侧边界） | `已修（二次修复：--verify 须降级 EAP）` |
 | **`GAP-009`** | 守卫判仓库用的是 `.git` 的**存在性**而非**有效性**（`:133` `Test-Path (Join-Path $_ '.git')`）：若 `project/.git` 是**空目录**（非有效仓），被选中即 `rev-parse` 失败 → 静默 | **潜在、当前布局不可达**：实测 T3 **BLOCK**（`record.md` `[2026-10-09T14:48:43Z]`，附录 D.7）—— 新序 `@($ws, project)` 令 `$ws` 先命中，**空目录根本不被咨询**；`falsifier` 预测"静默"**被实测推翻**。仅**目标布局**（工作区根无 `.git`、仓真在 `project/`）下可达。**该性质属 `:133` 既有，非本轮引入** | 接回目标布局时改为校验 `.git` **有效**（如 `git -C <cand> rev-parse --git-dir` 成功才采纳），而非 `Test-Path` | `已解除（沙箱独立放行；本仓不可证伪）` |
 | **`GAP-012`** | `.git` **可解析但仓无 HEAD**（`git init` 后未提交的 unborn 仓）：新谓词要求的是「`.git` **有效**」而非「**有 HEAD**」⇒ 照旧锁死到该仓 ⇒ `:144` 取不到 HEAD ⇒ **静默**（既有、非本轮引入、本仓不可达） | 沙箱**覆盖例**（附录 D.11）：`ws` 为 **unborn 仓**（`rev-parse --git-dir` → `.git` **成功**、`--short HEAD` → **空 / exit 128**）+ 页写错 SHA → 守卫 **静默（stdout 空）**；**对照**同一 `ws` 补一次提交后同页同 SHA → **BLOCK**（"当前是 `4563627`"）⇒ 该静默是**真 fail-open，非死代码**。**同源旁证**（附录 D.10）：`ws/.git` **无效**时新码 **BLOCK** ⇒ 新谓词**确实**会否决候选（与 D.11 合读：洞在"`--git-dir` 成功但无 HEAD"这一格）；**补记（`2026-10-10T07:58:04Z`，边界收紧，一句话）**：**仅真 unborn（`git init` 零提交）**属此形态——**断链 ref 不属**：把 `refs/heads/<br>` 改成**全零 SHA** 后 `rev-parse --short HEAD` 仍 **exit=0 / stdout `0000000`**（附录 D.12 的 B2c）⇒ 谓词的实际语义是"**能解析** HEAD"，断链 ref 仍解析得出、守卫照旧 **BLOCK**（D.12 的 G1）；且 **unborn 的首次提交即自愈** ⇒ 现实影响 ≈ 0。**原条目文字不删** | 接回目标布局时把谓词从「`.git` 有效」收紧为「**能取到 HEAD**」（或显式识别 unborn 并 emit 提示而非静默） | `未解除（潜在·本仓不可达）` |
-| **`GAP-013`** | **环境使判据失效**：① `GIT_DIR` 环境变量被设时，任意含 `.git` 的候选都会让 `--git-dir` 成功 ⇒ 谓词被**中和**（**补记更正 · 方向**：不是"静默通道"，而是**下游 BLOCK（可见）**——谓词**恰好**不再否决本应被否决的候选；**严重度低于 ②**：判错但**看得见**。实测：同一空 `.git`，**无** `GIT_DIR` → **静默**（谓词**正确地**否决该候选，附录 D.12 的 E1），**设** `GIT_DIR` 指向真仓 → **BLOCK**（自证 `GIT_DIR` 注入存活，D.12 的 E2）。**真正的效应**：`GIT_DIR` **劫持每一处 `rev-parse`**（`:138`/`:145`/`:168`/`:169`）⇒ 守卫**去读另一个仓的 HEAD**；在本仓这不是主要效应——`$ws` 本就先中，`:138` 子句早被 `Test-Path` 短路）；② `git` 不在 `PATH` 时 `CommandNotFoundException` 是**语句终止错误、不受作用域 EAP 约束** ⇒ 抛在 `Where-Object` 里 ⇒ 外层 `catch { exit 0 }` ⇒ **守卫静默死亡、零提示**（而本脚本**改用 PowerShell 的初衷正是** PATH 问题） | 本轮沙箱实测：`GIT_DIR` 未设（`''`），故 ①② 均为**读码 + 机制推演**，非本机实跑；`:144`/`:164` 未套作用域 EAP 的 git 调用已按同因补齐（附录 D.10）。**补记（`2026-10-10T07:58:04Z`；上句对 ① 已被实测取代，不删)**：① 见上列更正 + 附录 D.12 的 E1/E2（**已实测**）；② **两向 + 归因齐备（已实测，附录 D.12）**：`F1` 正常 PATH → **BLOCK**（有 JSON）；`F2` 剥 `PATH` → **exit=0、无 JSON、stderr 空**（自证 `git` 不可解析而 `powershell` 仍可解析）；`F3` **插桩副本**（`catch {` 后插一行 stderr 标记）→ **`CAUGHT:CommandNotFoundException`** ⇒ **归因成立**：命令找不到的异常在 `Where-Object` 里抛出、冒到外层 `catch { exit 0 }` ⇒ 静默。**关键机制（一句）**：**作用域 `EAP='Continue'` 关不掉这条**——它只约束"原生命令写 stderr 的非零退出"，**不管"命令找不到"**；故 ② 与 `GAP-008` **失败面不同**，尽管症状同形 | ① 解析仓库前显式清空/忽略 `GIT_DIR`（或改用 `--git-dir` 显式参数）；② 缺 `git` 时 emit 明确的 `systemMessage`，不得静默 | `未解除（既有设计属性）` |
+| **`GAP-013`** | **环境使判据失效**：① `GIT_DIR` 环境变量被设时，任意含 `.git` 的候选都会让 `--git-dir` 成功 ⇒ 谓词被**中和**（**补记更正 · 方向**：不是"静默通道"，而是**下游 BLOCK（可见）**——谓词**恰好**不再否决本应被否决的候选；**严重度低于 ②**：判错但**看得见**。实测：同一空 `.git`，**无** `GIT_DIR` → **静默**（谓词**正确地**否决该候选，附录 D.12 的 E1），**设** `GIT_DIR` 指向真仓 → **BLOCK**（自证 `GIT_DIR` 注入存活，D.12 的 E2）。**真正的效应**：`GIT_DIR` **劫持每一处 `rev-parse`**（`:138`/`:145`/`:168`/`:169`）⇒ 守卫**去读另一个仓的 HEAD**；在本仓这不是主要效应——`$ws` 本就先中，`:138` 子句早被 `Test-Path` 短路）；② `git` 不在 `PATH` 时 `CommandNotFoundException` 是**语句终止错误、不受作用域 EAP 约束** ⇒ 抛在 `Where-Object` 里 ⇒ 外层 `catch { exit 0 }` ⇒ **守卫静默死亡、零提示**（而本脚本**改用 PowerShell 的初衷正是** PATH 问题） | 本轮沙箱实测：`GIT_DIR` 未设（`''`），故 ①② 均为**读码 + 机制推演**，非本机实跑；`:144`/`:164` 未套作用域 EAP 的 git 调用已按同因补齐（附录 D.10）。**补记（`2026-10-10T07:58:04Z`；上句对 ① 已被实测取代，不删)**：① 见上列更正 + 附录 D.12 的 E1/E2（**已实测**）；② **两向 + 归因齐备（已实测，附录 D.12）**：`F1` 正常 PATH → **BLOCK**（有 JSON）；`F2` 剥 `PATH` → **exit=0、无 JSON、stderr 空**（自证 `git` 不可解析而 `powershell` 仍可解析）；`F3` **插桩副本**（`catch {` 后插一行 stderr 标记）→ **`CAUGHT:CommandNotFoundException`** ⇒ **归因成立**：命令找不到的异常在 `Where-Object` 里抛出、冒到外层 `catch { exit 0 }` ⇒ 静默。**关键机制（一句）**：**作用域 `EAP='Continue'` 关不掉这条**——它只约束"原生命令写 stderr 的非零退出"，**不管"命令找不到"**；故 ② 与 `GAP-008` **失败面不同**，尽管症状同形 | ① 解析仓库前显式清空/忽略 `GIT_DIR`（或改用 `--git-dir` 显式参数）；② 缺 `git` 时 emit 明确的 `systemMessage`，不得静默 | ① `未解除（既有设计属性）`（**本轮不动**）；② `已缓解（残余）`（留痕见下） |
 | **`GAP-010`** | **运行态排除只在本机生效**——排除规则写在 `.git/info/exclude`（**本地文件、不随仓库分发**）⇒ clone 的人拿不到它，一建 `memory.md` / `record.md` / 进度页就容易**被 `git add -A` 带进提交**。而 §5 又明令「不要再往 `.gitignore` 里加框架忽略规则」——**那条理由（框架在仓外）只成立于目标布局**，本仓是自托管布局，两条规则互相拉扯（D4） | 排除痕迹实测（附录 D.8）：`git status --porcelain --ignored` 把 `memory.md` / `record.md` / `project-progress.html` / `project/` 四行标 `!!`，**这正是排除的来源是 `info/exclude`、而非任何随仓分发的文件** | 随仓库分发 `.gitignore`（只排运行态）+ §5 连带纪律改为**按布局条件化**（目标布局不加 / 自托管加） | **`已解除`**（本轮；附录 D.8 实测） |
 | **`GAP-011`** | **`README.md` 的「框架在仓库之外」叙述与自托管现状矛盾**（与 `GAP-010` 同源的 D4 错位）：该节称"放在仓库外使框架混进交付物**结构上不可能**、**不再依赖忽略规则是否写对**"——而本仓**就是**框架仓（`GAP-004` 已裁定「本仓即框架」），前提不存在；且这句与 `GAP-010` 刚落地的「运行态**由随仓库分发的 `.gitignore` 挡**」**直接冲突** | `README.md:261-263`（改前）：`**为什么把框架放在仓库之外**…不再依赖忽略规则是否写对。`（命令与输出见附录 D.9） | 改为**按布局成立**的表述：自托管布局下框架在仓内是**有意决定**，运行态改由 `.gitignore` 挡 | **`已解除`**（本轮；附录 D.9 实测） |
 | **`GAP-014`** | **本仓自身是否适用十环门禁**——本仓对 04（构建）与 06–10（观测 / 排障 / 恢复 / 复盘 / 自动化）**无任何对应物**；两种读法后果不同：**(a)** 十环约束的是**采用本框架的项目**，本仓作为**模板**只需满足框架自举那几条 ⇒ 本仓不受十环约束；**(b)** 十环**也**约束本仓 ⇒ **本仓当前在 04 与 06–10 一律不通过** | `Test-Path` 六项全 `False`（附录 B.6）：`Dockerfile` / `.github` / `deploy` / `docs/adr` / `docs/changes` / `backend/migrations` | 人工裁定 (a) 或 (b)；若裁 (b)，本仓须补 04 与 06–10 对应物或显式登记为**永久豁免项** | `已解除` |
@@ -44,6 +44,12 @@
 > **`GAP-013① / ②` 补记留痕（`2026-10-10T07:58:04Z`，原条目文字不删）**：① **方向已更正**（`GIT_DIR` 的效应是"谓词被中和 ⇒ **BLOCK**（可见）"，非静默；**严重度低于 ②**）并**改为实测**（E1/E2）；② **两向 + 归因齐备**（F1/F2/F3，含"作用域 `EAP` 管不了'命令找不到'"这一关键机制），**状态 `未解除（既有设计属性）` 准确，保留不变**。命令与 stdout 见**附录 D.12**。
 > **独立复核放行收口（同轮，一句话）**：第一类（`:144` 的 EAP）**不能按"关上了失败通道"放行**——判为**防御性同形、未证明有牙**，**保留**但**理由已改正**（见第一部分）。`falsifier` 的 **`G5`** 猜测（`settings.json:8` 的调用行依赖 `$CLAUDE_PROJECT_DIR`，缺失时是"与 ② 同族的静默通道"）**已实测推翻**：缺该变量时 `powershell.exe` **报错退出**（路径退化成 `/.claude/hooks/…`），是**可见失败**；故**不登记为新缺口、不占号**（命令与 stdout 见附录 D.12 的 G5）。
 
+> **`GAP-013②` 修复留痕（一行，`2026-10-10T08:27:58Z`；**实现侧口径 · 放行待 `falsifier`**；**原条目文字不删**）**：**取代上两行中 ② 的结论**——上列「② **状态 `未解除（既有设计属性）` 准确，保留不变**」**已不再成立**（其**机制归因**「作用域 `EAP` 管不了'命令找不到'」**仍然成立、本节未改**）。**修法 = 前置 `Get-Command git` 检查 + `systemMessage`**：在 `try {` 内、两处候选解析之前插入 **13 行**（注释 4 / 代码 8 / 空行 1）——`if (-not (Get-Command git -ErrorAction SilentlyContinue))` → emit `systemMessage` → `exit 0`。**刻意用 `systemMessage` 而非 `decision:block`**：缺 `git` 时守卫**无法判定**页面是否落后，逐轮阻断会让框架不可用；与「指针异常」同类——**可见地告知，不静默**。**其余逻辑一律未动**（四处作用域 EAP、两处路径回退、指针异常分支、缺页静默**逐字节保留**）：**仅就守卫这一个文件** `git diff --stat` 实测 `1 file changed, 13 insertions(+)`（**0 删除**）。**两向实测**：`F1`（修复前 + 正常 `PATH` + 错 SHA）→ **BLOCK**（对照）／`F2`（修复前 + 剥 `git` 的 `PATH` + **同一页同一错 SHA**）→ **静默**（缺陷本尊）／`F3`（修复后 + 同环境）→ **`systemMessage`**／`F4`（修复后 + 正常 `PATH`）→ **仍 BLOCK**（有牙未被削弱）。**注入自证**：剥 PATH 前后 `Get-Command git` 布尔值 `True` → `False`，而 `powershell` 保持 `True`（**剥 PATH 须保留 `System32\WindowsPowerShell\v1.0`**，否则探针起不来）。**时间戳 / HEAD / `ls-files` 均实测**（`2026-10-10T08:27:58Z` · `d867d60` · `19`）。命令与 stdout 见**附录 D.13**。
+
+> **`GAP-013②` 通道与谓词复修留痕（一行，`2026-10-10T08:50:02Z`；**实现侧口径 · 放行待 `falsifier`**；**原条目与上一条留痕文字不删**）**：**状态由 `已修复（待独立放行）` 改为 `已缓解（残余）`**——上一条的修法**被独立复核击穿一处、且其通道被实测证伪**，两处同轮改掉：① **通道** `systemMessage` → **`exit 1` + stderr**。**依据**：本机实测**用户未见** `systemMessage`（守卫确曾在 `2026-10-09T14:54Z` emit 过），而 `systemMessage` 在文档上**只进 `Ctrl+O` 转录视图、不进主终端**；`exit 1`（非零、非 2）+ stderr 是**文档保证**的「非阻断错误」，转录里显示 `<hook 名> hook error` + **stderr 首行**。**裁定**：保留「提示不阻断」的强度，只换通道。② **谓词** `Get-Command git` → **功能性探针**（`try { & { EAP='Continue'; git --version 2>$null } } catch`）。**依据**：`falsifier` **击穿 `A1`**——`Get-Command` 证的是**可解析性**而非**可用性**，`PATH` 前置一个 **0 字节 `git.exe`** 即可让它放行，随后 `rev-parse` 抛 `CommandNotFoundException` → 外层 `catch { exit 0 }` → **回到静默**。**残余（故标「已缓解」非「已解除」）**：**仍不阻断**——`exit 1` 是**非阻断错误**，与 `AGENTS.md` §5「提醒会被忽略，阻断不会」**存在张力**（已按人工裁定接受：缺 `git` 时守卫**无法判定**页面是否落后，逐轮阻断会让框架不可用）。**两向实测（附录 D.14）**：`POS` 静默 `exit 0` ／ `NEG` 仍 `{"decision":"block"}`（判据未被削弱）／剥 `git` 的 `PATH` → **`exit=1` + stderr** ／**`A1` 复现格**（0 字节 `git.exe`）→ 修复前守卫 `exit=0` **静默**、本轮守卫 **`exit=1` + stderr**。**时间戳 / HEAD / `ls-files` 均实测**（`2026-10-10T08:50:02Z` · `d867d60` · `19`）。命令与 stdout 见**附录 D.14**。
+
+> **`GAP-002` 通道同轮更换留痕（一行，`2026-10-10T08:50:02Z`；**实现侧口径 · 放行待 `falsifier`**；**状态不变：`已缓解（残余为已接受代价）`**；**原条目与留痕文字不删**）**：其「**指针存在但读不出页名**」分支与 `GAP-013②` **同轮换成同一通道**——`systemMessage` + `exit 0` → **`exit 1` + stderr**（**两个分支必须同形**，否则留下"两处不同成熟度"，D4）。**改后实测**：指针写**全空白** → **`exit=1` + stderr 首行**（不再是 `systemMessage`；附录 D.14 的 `PTR` 格）。**残余不变**：**指针指向不存在的页名**时**仍静默**——它与「尚未初始化」观测上**不可分**，故不报。**顺带更正本台账旧读数**：附录 `C.2` 用例③、`D.3` 的 `CASE-2/3/4`、`D.6` 的 `CASE-3` 所记的 `{"systemMessage":…}` **是改前的真读数、保留不删**，**不再是改后的期望值**——**复跑口径以本节为准**。
+
 > **附注（`GAP-009` 同源，一行）**：`AGENTS.md` 把 `$REPO` 指向 §0.0 的 `git rev-parse --show-toplevel`，而该命令**只向上找**——在**目标布局**（仓在 `project/` 子目录）下**报错**。
 > 即 hook 的解析规则与文档声明的规则**在目标布局下不一致**（D4 类：两处不同成熟度的规则）。
 
@@ -55,7 +61,7 @@
 **`GAP-008` 二次修复留痕**（`2026-10-09T16:03:11Z`，实现侧口径 · **放行待 `falsifier`**）：**首修已被独立复核击穿**——`falsifier` 设计的 **T2**（页写一个**存在的非 commit 对象** id，如 `HEAD^{tree}` 的 40 位）实测**静默**，本该 BLOCK。**根因**：`:161` 的 `--verify "<sha>^{commit}"` 在对象类型不符时失败，**`--quiet` 挡不住**——外层 `Stop` 把 git 写 stderr 的非零退出升格为终止错误，被最外层 `catch { exit 0 }` 吞成静默；**同 `:136-139`，上一轮只修了那一处、漏了这里**。**本次**给 `:161` 套上同形的**作用域内 `$ErrorActionPreference='Continue'`**（`:160` 的 `rev-parse HEAD` 不动——此处仓库已校验过）。
 > **`GAP-008` 边界（`falsifier` 指出，一行）**：正则 `{7,40}` **假定对象 id ≤ 40 位**；`--object-format=sha256` 的仓（**64 位** id）下**即使页面写的是完全正确的 SHA 也永不匹配** → 走「无标记静默」（**永久静默**）。本仓为 **sha1，不影响**；该边界**非本次引入**。
 
-**`GAP-002` 残余（已接受的代价）**：**指针指向不存在的页名**时仍静默——它与"页确实缺失（尚未初始化）"在观测上**不可分**，故**不报**（理由见 `AGENTS.md` §5）；**缓解后新行为**：指针**存在但读不出页名**（空 / 全空白 / 不可读）→ emit `systemMessage`。
+**`GAP-002` 残余（已接受的代价）**：**指针指向不存在的页名**时仍静默——它与"页确实缺失（尚未初始化）"在观测上**不可分**，故**不报**（理由见 `AGENTS.md` §5）；**缓解后新行为**：指针**存在但读不出页名**（空 / 全空白 / 不可读）→ **`exit 1` + stderr**（通道于 `2026-10-10T08:50:02Z` 由 `systemMessage` 更换，理由见 D.14）。
 
 **`GAP-010` 解除留痕**：本仓新增**随仓库分发**的 `.gitignore`（只排运行态三行）；`AGENTS.md` §5 连带纪律改为**按布局条件化**（目标布局不加——框架在仓外，规则永不命中；自托管布局应当加，只排运行态，**不得**排交付物与框架源）；本机专属的 `project/` **仍**只走 `.git/info/exclude`，**不写入** `.gitignore`，并在文件内以注释写明该分工。实测见**附录 D.8**。
 > **口径（一句）**：本条**不声称守卫类"有牙/无牙"**——`.gitignore` 是**声明式**规则，其证据形态是 `git check-ignore -v` 与 `git add -A --dry-run` 的**真实输出**（D1：「读到才算」），**不是**负向注入（`AGENTS.md` §5「跑两个用例」那条纪律的**范围是进度页守卫脚本**，不适用于本文件）。**已接受的代价**：进度页改名后 `.gitignore` 里那一行会**静默失效**（旧规则不命中，但不会有任何报错）——已在文件内注释中写明"改名请同步这一行"。
@@ -403,7 +409,9 @@ $ Test-Path backend/migrations  → False      （MIG- 落盘位）
 powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/check-progress.ps1
 # 用例② 注入错误 SHA（页面【存在】）-> 必须 emit {"decision":"block"}
 powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/check-progress.ps1
-# 用例③ 指针文件存在但为空 -> 必须 emit {"systemMessage":…}   （GAP-002 缓解后的新分支）
+# 用例③ 指针文件存在但为空 -> 必须 exit=1 且 stderr 首行为「进度页指针异常：…」  （GAP-002 缓解后的分支；通道见 D.14）
+# 用例⑥ 剥掉 git 的 PATH（保留 System32\WindowsPowerShell\v1.0）-> 必须 exit=1 且 stderr 首行为「进度页守卫未运行：…」
+#        （GAP-013② 复修后的分支；**并须同时复跑用例②**，证明判据未被前置检查削弱）
 # 用例④ 页面写 40 位完整 SHA（同一提交）-> 必须【静默】        （GAP-003 修复后的回归）
 # 用例⑤ 在 project/ 下造一个假 .git，同一页面同一错 SHA -> 必须**仍然** emit block
 #        （GAP-007 修复后的回归：内层空仓不得劫持守卫）
@@ -685,3 +693,144 @@ cleanup: Test-Path sandbox = False
 ```
 
 **读法**：同一页面、同一错 SHA，**只因 `ws` 有没有 HEAD**，结果从**静默**翻转为 **BLOCK** ⇒ 该静默是**真 fail-open**（判据被绕过），**不是死代码**；`ws` 有提交时 `$ws` 被采纳且 `:144` 取到 HEAD，故 `project/` 侧连谓词都不求值——与 `GAP-012` 的推演一致。**本仓不可达**：本仓 `$ws` 恒为有 HEAD 的真仓（`61f63de`）。**触发前提**：有人在**工作区根**（而非 `project/`）`git init` 且**尚未提交**——与 `GAP-007` 是**同一族的"内层/外层仓混淆"**，只是这次的肇事者是工作区根自己。
+
+### D.13 `GAP-013②` 修复实测（**实现侧口径 · 放行待 `falsifier`**；`2026-10-10T08:27:58Z` 实跑）
+
+**口径（一句）**：本节输出均为**本次实跑**所得，非转述、非推断；但**执行者即实现方**——按 D3「判据不得自审」，这**不构成**独立放行，独立复核须**另派只读方**（`falsifier`）补记。
+
+**① 语法解析 + 行尾完整性（LF 必须保住）**：
+
+```
+$ [System.Management.Automation.Language.Parser]::ParseFile(<hook>, [ref]$tokens, [ref]$errors)
+ParseErrors=0
+first4=35,32,83,116   （= '#',' ','S','t'，无 BOM）
+CRLF=0 bareLF=198     （改前 bareLF=185 ⇒ 纯 LF，未被编辑器写成 CRLF）
+```
+
+**② 本仓只读探针（页与 HEAD 一致 ⇒ 非净回归；未写任何文件）**：
+
+```
+$ powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/check-progress.ps1
+（stdout 空） exit=0                      <- 页记录 d867d60，HEAD 亦 d867d60
+```
+
+**③ 负向：注入错 SHA ⇒ 必须仍有牙（证明加了前置检查后判据未削弱）**。同一页面，`finally` 内**逐字节还原**：
+
+```
+CASE-NEG(sandbox)  真仓 .git 副本 + 页写 0000000 -> exit=0
+    stdout={"decision":"block","reason":"进度页落后于仓库：sandbox-progress.html 记录的 HEAD 是 0000000，而当前是 d867d60。…"}
+CASE-NEG(repo)     本仓页注入 0000000            -> exit=0
+    stdout={"decision":"block","reason":"进度页落后于仓库：project-progress.html 记录的 HEAD 是 0000000，而当前是 d867d60。…"}
+page SHA256 before=39E198F5…28C48E6
+page SHA256 after =39E198F5…28C48E6   restored=True
+```
+
+**④ 本次修复点：剥掉 `git` 的 `PATH`（保留 `System32\WindowsPowerShell\v1.0`）**。
+
+**注入自证**（`Get-Command` 布尔值，剥前 / 剥后）：
+
+```
+psDir = C:\WINDOWS\System32\WindowsPowerShell\v1.0
+stripped PATH = C:\WINDOWS\System32\WindowsPowerShell\v1.0;C:\WINDOWS\System32;C:\WINDOWS
+stripped PATH contains 'Git'? False
+A 子进程 正常 PATH      -> git=True  powershell=True
+B 子进程 剥 git 的 PATH -> git=False powershell=True     <- 注入有效，且探针仍能起来
+```
+
+**两向对照（同一沙箱、同一页、同一错 SHA，四格全跑）**：修复前守卫 = **HEAD 提交的 blob 逐字节重建**（校验 `RECONSTRUCTION == committed HEAD blob` → `True`），非"凭记忆重写"。
+
+```
+SANDBOX=<%TEMP%\gap013b-…>   sandboxHEAD=d867d60   page records 0000000（页面是错的）
+F1 【修复前】+ 正常 PATH      -> exit=0  BLOCK（"…而当前是 d867d60。"）   <- 对照：判据本来有牙
+F2 【修复前】+ 剥 git 的 PATH -> exit=0  stdout=[]  stderr=[]            <- 缺陷本尊：静默、零提示
+F3 【修复后】+ 剥 git 的 PATH -> exit=0
+   stdout={"systemMessage":"进度页守卫无法运行：PATH 上找不到 git。守卫需要 git 读取仓库 HEAD；缺它时将无法判断进度页是否落后。请把 git 加入 PATH，或确认本机已安装 git。"}
+F4 【修复后】+ 正常 PATH      -> exit=0  BLOCK（"…而当前是 d867d60。"）   <- 有牙，未被前置检查削弱
+```
+
+**读法（三条）**：① `F1` 与 `F2` **同页同 SHA、只差 `PATH`** ⇒ 那个静默**确由缺 `git` 引起**（`F2` 的 `stderr` 也是空的，与它正常时的静默**在观测上不可分**——这正是 `GAP-013②` 的性质）；② `F3` 由**静默**变为**可见的 `systemMessage`** ⇒ 本修复**关上了这条静默通道**，且**刻意不是 `decision:block`**（缺 `git` 时**无法判定**落后，逐轮阻断会让框架不可用）；③ `F4` **仍 BLOCK** ⇒ 前置检查**没有**削弱原有判据（`AGENTS.md` §5 「用例② 仍有牙」的口径）。
+
+**清理与完整性复核（无残留）**：
+
+```
+pointer SHA256 = BF4B689955CB250B7959FFB1AF383944D35D0D426750FC39B9BAA0F2E6B2ADE1   （与 D.6/D.10/D.12 一致）
+page    SHA256 = 39E198F5939AC4831352EAB3BB41E1851A23E3DDECD5960D0C77C444728C48E6   （探针前后一致）
+$ git status --porcelain
+ M .claude/hooks/check-progress.ps1
+$ git status --porcelain --ignored
+ M .claude/hooks/check-progress.ps1
+!! memory.md
+!! project-progress.html
+!! project/
+!! record.md
+!! 我要做什么.txt
+leftover gap013b* sandbox dirs = 0
+```
+
+**读法**：指针**逐字节未被触碰**（SHA256 与历次一致）；工作树**只有守卫一处改动**（台账本轮改动在本节采集之后），**未新增/删除任何入库文件** ⇒ 无测试残留。
+> ⚠️ **两条实测踩过的坑（供复跑者）**：① **剥 `PATH` 必须保留 `System32\WindowsPowerShell\v1.0`**——否则外层探针自己起不来，会把"探针失败"读成"守卫行为"；② **`Set-Content` / `Out-File` 在本机 PS 5.1 下既加 BOM 又把行尾写成 CRLF**（实测同一内容：`WriteAllText` → `97,10,98,10`；`Set-Content -Encoding utf8` → `239,187,191,97,10,98,13,10`；`Out-File -Encoding utf8` **同**）⇒ 改此类文件一律用 `[System.IO.File]::WriteAllText` + `New-Object System.Text.UTF8Encoding($false)`，否则 `*.ps1 text eol=lf` 的归一被绕过、**行尾与 BOM 都成为测量口径的变量**（与 `AGENTS.md` §8「覆盖率口径」同源）。
+
+### D.14 `GAP-013②` / `GAP-002` 通道与谓词复修实测（**实现侧口径 · 放行待 `falsifier`**；`2026-10-10T08:50:02Z` 实跑）
+
+**口径（一句）**：本节输出均为**本次实跑**所得，非转述、非推断；但**执行者即实现方**——按 D3「判据不得自审」，这**不构成**独立放行，独立复核须**另派只读方**（`falsifier`）补记。**沙箱**：`%TEMP%\gap013c-*`，内含守卫副本 + **真仓 `.git` 副本**（`short HEAD = d867d60`）+ 页 `sandbox-progress.html`（写 `0000000`，即**错 SHA**）+ 指针。
+
+**① 语法解析 + 行尾完整性（LF 必须保住）**：
+
+```
+$ [System.Management.Automation.Language.Parser]::ParseFile(<hook>, [ref]$tokens, [ref]$errors)
+ParseErrors=0
+hook bytes=11440  first4=35,32,83,116   （= '#',' ','S','t'，无 BOM）
+bareLF=197  CR=0                         （改前 bareLF=198 ⇒ 仍纯 LF，未被编辑器写成 CRLF）
+自指行号残留（`:\d{2,3}` 命中数）= 0     （D1 漂移已修：两处改为描述式指代）
+```
+
+**② 四格主用例（同一沙箱、同一页、同一错 SHA）**：
+
+```
+POS  正常 PATH，页与 HEAD 一致       -> exit=0  stdout=[]  stderr=[]
+NEG  正常 PATH，页 SHA 错             -> exit=0  stdout=[{"decision":"block","reason":"进度页落后于仓库：sandbox-progress.html 记录的 HEAD 是 0000000，而当前是 d867d60。…"}]  stderr=[]
+FIX  剥 git 的 PATH，同页同错 SHA     -> exit=1  stdout=[]  stderr=[进度页守卫未运行：PATH 上的 git 不可用（缺失或无法执行）。本轮未检查进度页是否落后。]
+PTR  正常 PATH，指针写全空白          -> exit=1  stdout=[]  stderr=[进度页指针异常：.claude/progress-page.txt 存在但读不出页名（空 / 全空白 / 不可读）。守卫已回退到默认页名，可能在看一个错误的文件。]
+```
+
+**③ `FIX` 格的注入自证**（剥 `PATH` 前后，`Get-Command` 布尔值）：
+
+```
+stripped PATH = C:\WINDOWS\System32\WindowsPowerShell\v1.0;C:\WINDOWS\System32;C:\WINDOWS
+stripped PATH contains 'Git'? False
+PROBE 正常 PATH      -> git=True   powershell=True
+PROBE 剥 git 的 PATH -> git=False  powershell=True     <- 注入有效，且探针仍能起来
+```
+
+**④ `A1` 复现格——`falsifier` 击穿的正是这一格（0 字节 `git.exe` 前置在 `PATH`）**：
+
+```
+fakegit\git.exe = 0 bytes，置于 PATH 首位
+探针（A1 环境）：
+  Get-Command git -> True   source=…\fakegit\git.exe   bytes=0    <- 旧谓词【确实被骗过】，自证成立
+  functional probe -> bool=False  (THREW:ApplicationFailedException)  <- 新谓词识别出"跑不了"
+
+A1-before  旧守卫 + 0 字节 git.exe + 错 SHA  -> exit=0  stdout=[]  stderr=[]      <- 缺陷本尊：静默、零提示
+A1-after   本轮守卫 + 同环境同页同错 SHA      -> exit=1  stderr=[进度页守卫未运行：PATH 上的 git 不可用（缺失或无法执行）。本轮未检查进度页是否落后。]
+```
+
+> ⚠️ **`A1-before` 的对照侧是哪一份（必须明说，不得含糊）**：它取自 **`git show HEAD:.claude/hooks/check-progress.ps1` 的 blob**（`10667` 字节；该 blob 是 `d867d60` 提交的版本，**早于** `2026-10-10T08:27:58Z` 那次未提交的 13 行插入）。故它**不是**"08:27 版守卫"，而是**含 `Get-Command git` 检查的更早版本**——但**这不削弱该格**：① 本轮 `A1` 击穿的是**同一句 `Get-Command git`**（`git diff` 实测该句**未被触及**，仅其判据被换掉），两版在该环境下的行为**同形**；② 严格按"同一谓词"论，**08:27 版守卫已被本轮编辑覆盖、不再留存**（未提交、无副本）⇒ **该格无法用 08:27 版复跑**，此点**如实标注**，不冒充。
+
+**⑤ 本仓只读探针 + 清理复核（无残留）**：
+
+```
+$ powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/check-progress.ps1
+（stdout 空）  guard exit=0                       <- 页与 HEAD 一致 ⇒ 非净回归
+pointer SHA256 = BF4B689955CB250B7959FFB1AF383944D35D0D426750FC39B9BAA0F2E6B2ADE1   （与 D.6/D.10/D.12/D.13 一致）
+pointer bytes  = 112,114,111,106,101,99,116,45,112,114,111,103,114,101,115,115,46,104,116,109,108,10
+page    SHA256 = 39E198F5939AC4831352EAB3BB41E1851A23E3DDECD5960D0C77C444728C48E6   （探针前后一致）
+leftover gap013c* / gap013c2* sandbox dirs = 0
+$ git status --porcelain
+ M .claude/hooks/check-progress.ps1
+ M docs/ledger.md
+```
+
+**读法（三条）**：① **`A1-before` 与 `A1-after` 同环境、同页、同错 SHA，只差守卫版本** ⇒ 那个静默**确由旧谓词只证"可解析"引起**，新谓词**关上了这条静默通道**；② **`NEG` 仍 `decision:block`** ⇒ 换谓词与换通道**没有削弱原有判据**（`AGENTS.md` §5「用例② 仍有牙」的口径），故 `POS` 的静默可读作"确无判据"；③ **`FIX` / `PTR` 均为 `exit 1` + stderr**（**不是 0、不是 2、不是 `systemMessage`**）⇒ 两个提示分支**同形**，D4 的"两处不同成熟度"未产生。**残余（须继续跟踪，不随本节关闭）**：`exit 1` 是**非阻断错误**，**仍不阻断本轮结束**——与 `AGENTS.md` §5「提醒会被忽略，阻断不会」的张力**已按人工裁定接受**，故状态是 `已缓解（残余）`。
+> ⚠️ **两条实测踩过的坑（本节新增，供复跑者）**：① **探针不要用 `powershell -Command "…"` 传内联脚本**——外层 PS 会先剥一层引号，`2>$null` 被吃掉后 `git` 的 stderr 直接冒到子进程 stderr，**把"探针返回空"误读成"探针没生效"**；本节改用 `-File` + 独立 `.ps1`（写文件仍走 `WriteAllText` + 无 BOM UTF-8）。② **`A1-before` 的对照侧必须取自 `git show HEAD:…` 的 blob**，不能用"我记得改前是什么样"——否则对照格本身就成了新的漂移源（与 D.3/D.6 两次清理险情同源）。
+
+

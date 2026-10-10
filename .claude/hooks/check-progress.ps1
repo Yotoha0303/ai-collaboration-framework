@@ -8,11 +8,14 @@
 #
 # Exit 0 with no output -> allow the turn to end.
 # Exit 0 with JSON      -> `decision:block` feeds the reason back to the model,
-#                          which must update the page before stopping;
-#                          `systemMessage` shows a note to the user only.
-#                          This guard emits `decision:block` for a lagging page
-#                          and `systemMessage` for a pointer that exists but
-#                          yields no page name.
+#                          which must update the page before stopping.
+#                          This guard emits `decision:block` for a lagging page.
+# Exit 1 with stderr    -> a NON-BLOCKING error the user actually sees: git
+#                          unusable, or a pointer that exists but yields no page
+#                          name. (`systemMessage` is documented but shows only in
+#                          the Ctrl+O transcript on this setup, not the terminal —
+#                          measured: the user reported not seeing it, so both
+#                          notice-only branches use exit 1 + stderr instead.)
 #
 # Why PowerShell and not bash: if Git for Windows lives somewhere that keeps
 # `usr\bin` off the Windows PATH, a hook command of
@@ -74,7 +77,8 @@ try {
     # of truth, so a pointer that EXISTS but yields NO name (empty, whitespace,
     # or unreadable) is a real fault: this script would otherwise silently keep
     # using the stale default name below. That case is reported to the user via
-    # `systemMessage`. A pointer naming a page that does NOT exist stays silent —
+    # exit 1 + stderr (the notice-only channel; see the header). A pointer naming
+    # a page that does NOT exist stays silent —
     # an ACCEPTED COST (AGENTS.md section 5): that is observationally identical
     # to "not initialised yet", which must not alert. A pointer file that is
     # absent altogether is likewise "not initialised yet", not a fault.
@@ -104,14 +108,8 @@ try {
     # proved the pointer file exists, so no second test is needed here.) The
     # silent fallback this replaces is the GAP-002 defect.
     if ($pointerFault) {
-        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-        [ordered]@{
-            systemMessage = ("进度页指针异常：$nameFile 存在，但读不出页名（空文件 / 全是空白 / 不可读）。" +
-                             "守卫已回退到默认页名 project-progress.html —— 这只在页名恰好仍是它时才正确，" +
-                             "否则守卫在看一个错误的文件。页名指针是页名的唯一事实源（AGENTS.md 第 5 节），" +
-                             "请修正该文件再结束本轮。")
-        } | ConvertTo-Json -Compress
-        exit 0
+        [Console]::Error.WriteLine("进度页指针异常：.claude/progress-page.txt 存在但读不出页名（空 / 全空白 / 不可读）。守卫已回退到默认页名，可能在看一个错误的文件。")
+        exit 1
     }
 
     # No page -> nothing to compare against, so there is no criterion to apply.
@@ -129,6 +127,20 @@ try {
     # find no HEAD, and go permanently silent -- which is exactly what it looks
     # like when it works. Both candidates stay: a fail-closed guard must not go
     # quietly dead when the layout shifts.
+    # git unusable -> every rev-parse below throws CommandNotFoundException, which the
+    # scoped EAP does NOT catch (it covers a native command's non-zero exit, not "command
+    # not found"), so the outer catch would swallow it and the guard would die silently.
+    # Probe FUNCTIONALLY: Get-Command only proves the name RESOLVES -- a zero-byte or
+    # truncated git.exe on PATH passes it and then fails at call time (GAP-013②).
+    $gitOk = $false
+    try {
+        $gitOk = [bool](& { $ErrorActionPreference = 'Continue'; git --version 2>$null })
+    } catch { $gitOk = $false }
+    if (-not $gitOk) {
+        [Console]::Error.WriteLine("进度页守卫未运行：PATH 上的 git 不可用（缺失或无法执行）。本轮未检查进度页是否落后。")
+        exit 1
+    }
+
     # A candidate must RESOLVE as a git repo, not merely hold a `.git` entry
     # (GAP-009). The scoped EAP keeps git's stderr off the outer catch, which
     # would otherwise swallow this fail-closed check.
@@ -141,7 +153,7 @@ try {
             Select-Object -First 1
     if (-not $repo) { exit 0 }
 
-    # SHAPED like :138 / :169 but NOT proven to have teeth (GAP-012/013): on unborn input the scoped EAP and the bare form land on the same silent `exit 0`; kept only because it is harmless and matches the other three sites -- NOT claimed to close a failure path.
+    # SHAPED like the other scoped-EAP sites above but NOT proven to have teeth (GAP-012/013): on unborn input the scoped EAP and the bare form land on the same silent `exit 0`; kept only because it is harmless and matches the other three sites -- NOT claimed to close a failure path.
     $head = (& { $ErrorActionPreference = 'Continue'
                  git -C $repo rev-parse --short HEAD 2>$null })
     if (-not $head) { exit 0 }
@@ -159,7 +171,7 @@ try {
     # and is correctly reported as lagging. `--quiet` keeps git's stderr off the
     # outer catch, which would otherwise swallow the verdict; `ToLower()` because
     # object ids are lowercase hex. `$head` stays short -- error-message wording.
-    # `--quiet` is NOT enough on its own -- same trap as :136-139: under the outer
+    # `--quiet` is NOT enough on its own -- same trap as the repo-resolution check above: under the outer
     # `Stop`, a failed `--verify` (e.g. the id names a tree, not a commit) has git
     # write stderr and exit non-zero, which Stop promotes to a terminating error
     # that `2>$null` cannot stop; the outer catch then swallows it into silence.
