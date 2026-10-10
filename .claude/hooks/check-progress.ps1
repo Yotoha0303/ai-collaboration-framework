@@ -141,7 +141,7 @@ try {
             Select-Object -First 1
     if (-not $repo) { exit 0 }
 
-    # Same cause as :138 / :169 -- the outer `Stop` promotes a git stderr failure to a terminating error that the outer catch swallows (GAP-012/013).
+    # SHAPED like :138 / :169 but NOT proven to have teeth (GAP-012/013): on unborn input the scoped EAP and the bare form land on the same silent `exit 0`; kept only because it is harmless and matches the other three sites -- NOT claimed to close a failure path.
     $head = (& { $ErrorActionPreference = 'Continue'
                  git -C $repo rev-parse --short HEAD 2>$null })
     if (-not $head) { exit 0 }
