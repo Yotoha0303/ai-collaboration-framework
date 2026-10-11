@@ -8,6 +8,12 @@
             "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"$CLAUDE_PROJECT_DIR/.claude/hooks/check-progress.ps1\"",
             "timeout": 15,
             "statusMessage": "检查进度页是否落后于 HEAD"
+          },
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"$CLAUDE_PROJECT_DIR/.claude/hooks/check-numbers.ps1\"",
+            "timeout": 20,
+            "statusMessage": "检查编号是否跨分支撞车"
           }
         ]
       }
