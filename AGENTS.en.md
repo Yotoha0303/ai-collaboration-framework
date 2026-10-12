@@ -184,79 +184,18 @@ applicable"** (**this holds only for the subjects below**).
 
 > **This matrix covers all ten stages**, in **one-to-one correspondence** with the ten stages of
 > `prompts/全生命周期工程质量总监与系统架构师.md` (the historical roll-up has been cancelled).
-> **The responsible role and handover artefacts for each stage are in §2.1** — once the exit
-> criteria **pass**, that role dispatches the next stage. The two sections must be read together.
+> **Each stage's handover must dispatch across stages** — see **`AGENTS.md` §4.2 lifecycle
+> advance**; this section's *blocking* half and §4.2's *advancing* half must be read together.
 
 **Before entering any stage**: perform the "entry review" (§3, item 1) — list whether the
 previous stage's hard assets are met; if not, block.
 
-### 2.1 Stage chaining and handover (**after each stage passes, hand over to the next stage's role**)
-
-**Source**: user TODO item 8 — *"when one lifecycle stage finishes, call the next lifecycle
-stage's agent to run the process through, e.g. after development comes testing."*
-
-**The criterion in one sentence**: **an exit is not an endpoint, it is a handover point.** §2
-states "the next stage may not begin until the exit criteria are met" (**the blocking
-direction**); this section states **the other half**: once the exit criteria **are met**, the
-**responsible role produces the handover artefacts and dispatches the next stage to the
-corresponding role** (**the advancing direction**).
-Only together are they D2 — write only the blocking half and the process **stops dead**.
-
-**Stage → role (one responsible role per stage, covering the full lifecycle)**:
-
-| Stage | Responsible role (registry name) | Instantiated? | **Hard assets** handed to the next stage |
-| --- | --- | --- | --- |
-| Inception / business loop | `biz-strategist` | ✅ | Value proposition · north-star metric · Go/No-Go |
-| Requirements | `pm-spec-driver` | ✅ | PRD · state machine (happy/exception paths) · testable acceptance criteria |
-| **01 Design** | `system-architect` | ✅ | ADR on disk · schema migration (timestamped) · SPOFs and degradation |
-| **02 Development** | `backend-dev` | ✅ | Code · `docs/changes` **write-first-fill-later** · local verification commands |
-| **03 Test** | `qa-validator` | ✅ (plus `falsifier` for negative verification) | Cases **100% in the CI matrix** · coverage threshold · blocking bar |
-| **04 Build** | `sre-operator` | ✅ | **Immutable digest** image · `REVISION == Git HEAD` assertion |
-| **05 Deploy** | `sre-operator` | ✅ | **Idempotent** deploy script · config/env vars aligned both ways |
-| **06 Observability** | `sre-operator` | ✅ | SLI/SLO contract · alert rules (severity participates) · Runbook |
-| **07 Incident** | `rca-investigator` | ✅ | Second-level timeline · 5-Whys root cause · actions → `GAP-` |
-| **08 Recovery** | `sre-operator` | ✅ | Measured **RTO/RPO** · **business-level** availability verification cases |
-| **09 Retrospective** | `rca-investigator` | ✅ | Action items (**owner form / dependencies / measurable DoD**) |
-| **10 Automation** | `sre-operator` | ✅ | Timer **precondition assertions** · independently archived report |
-| Iterate / decommission | (located by where that change falls in the ten stages) | — | — |
-
-> **`data-engineer` / `sec-auditor` / `finops-controller` are not in this table**: they do not own
-> a stage but are **cross-cutting constraints** (data / security / cost) — **summoned as needed,
-> point-wise**; see their input/output contracts in the registry.
-> **Roles are reused across stages** (`sre-operator` appearing in 04–06, 08 and 10 is
-> **deliberate**, not a typo) — see `prompts/AI总控.md`, "a specialist AI can be reused across
-> the lifecycle".
-> **"Instantiated" = has a dispatchable implementation** (user TODO item 3); roles **11 / 12 are
-> "domain roles"** (contract / frontend), trimmed to a concrete project — **domain deepening is
-> still open-ended**, see ledger `DEFER-006`.
-
-**Chaining procedure (four steps; skipping one is a violation)**:
-
-1. **Judge the exit first**: verify this stage's exit criteria per §2; **not met → block, do not
-   chain** (D2).
-2. **Then hand over the assets**: the responsible role produces the **hard assets in the table
-   above**, each **measured to exist** (`Test-Path` / `git ls-files`) — **never** merely written
-   as "done" (D1).
-3. **Then dispatch the next stage**: locate the next stage's role via the **registry** → check
-   whether it is **instantiated** in **`.claude/agents/`**.
-   - **Instantiated** ⇒ dispatch carrying **the hard assets from step 2**; **concurrency ≤3**,
-     architecture changes **reviewed in pairs** (see §4.0).
-   - **Not instantiated** ⇒ **stop and tell the user**, asking them to **create**
-     `.claude/agents/<registry-role-name>.md`. **Never** substitute an existing role, and
-     **never** have the orchestrator **do it itself** (§4.0 "no silent downgrade"; the gap is
-     tracked as ledger `DEFER-006`).
-4. **Leave a trace**: the chaining action goes into `record.md` per §5 (one line: command + real
-   stdout summary), with the progress page synced **in the same turn**.
-
-> ⚠️ **This repo's reality (the subject boundary of §2 applies here too)**: the **baseline
-> contracts for the roles above are all instantiated**, so step 3's "not instantiated" branch is
-> **now uncommon here** — it is reserved for **domain roles** (`DEFER-006`).
-> But **this repo is a template**: instantiation happens in the **adopter's** repository, and an
-> adopter's **un-instantiated roles take the same stop branch**.
-> **Downstream sync**: the **mechanical check** for this section ("refuse to enter the next stage
-> when the previous stage's assets are missing") is **not built yet** — per the decision on TODO
-> item 8, this round lands **the documented protocol only**; whether to add a mechanical guard is
-> for the ledger.
+> **§4.2 (lifecycle advance) mirrors this section**: **advancing is the other half of the gate.**
+> Each **lifecycle stage**'s handover must dispatch, in order, `qa-validator` (independent
+> testing) → `falsifier` (falsify the criteria) → `gate-auditor` (stage-gate verdict);
+> **skip one and you may not advance** (D2). **Sub-tasks inside a single stage are not stage
+> advance.** See **`AGENTS.md` §4.2** (Chinese is the baseline) for the hard rule, its rationale
+> and the cost.
 
 ---
 
@@ -350,7 +289,7 @@ authoritative **in the registry text** and is not repeated here.
 
 > **"Baseline contract" = the minimal set covering the full lifecycle** (user TODO item 3:
 > **basic volume is enough, covering the full lifecycle**). They turn the registry's
-> **input/output contracts**, **hard boundaries** and **§2.1 handover artefacts** into
+> **input/output contracts**, **hard boundaries** and the **`AGENTS.md` §4.2 handover chain** into
 > dispatchable implementations. **Roles 11 / 12 are "domain roles"** (contract / frontend),
 > **beyond the baseline** — shipped with `main`, trimmed to a concrete project.
 > **Domain deepening is still open-ended** (e.g. other web3 roles) — see ledger `DEFER-006`.

@@ -127,8 +127,9 @@
 `sre-operator` SRE 可观测性与稳定性专家 · `sec-auditor` 安全合规与权限审计师 ·
 `finops-controller` 云成本与资源控制师 · `rca-investigator` 故障复盘与根因分析师
 
-**这 10 类均已随框架提供「基础契约」实现**（覆盖全生命周期，见
-[`.claude/agents/`](.claude/agents/)）。各环的主责角色与交接物见 `AGENTS.md` §2.1。
+**这 10 类均已随框架提供实现**；另有 `contract-dev` / `frontend-dev` 两个**领域角色**，共 **12 类**
+（见 [`.claude/agents/`](.claude/agents/)）。**每阶段收尾必须跨阶段派**（`qa-validator` → `falsifier` → `gate-auditor`），
+见 `AGENTS.md` **§4.2 生命周期推进**。
 
 **领域角色**（如 web3 项目的 `contract-dev`）**不在其列**——按项目领域**按需新建**
 `.claude/agents/<角色名>.md`（跟踪见台账 `DEFER-006`），**不得**拿现有的顶替。

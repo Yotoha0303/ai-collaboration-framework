@@ -115,8 +115,8 @@ mechanical guards).
 | **10 Automation** | 🔒 Hard gate | Timer precondition assertions + independently archived report |
 
 > Full matrix in [`AGENTS.md`](AGENTS.md) §2 (**Chinese is the baseline**; its English
-> projection is [`AGENTS.en.md`](AGENTS.en.md)); the per-stage **responsible role and handover
-> artefacts** are in §2.1. The two sections must be read together.
+> projection is [`AGENTS.en.md`](AGENTS.en.md)); the per-stage **handover chain** is in
+> **`AGENTS.md` §4.2 lifecycle advance**. The two must be read together.
 
 ---
 
