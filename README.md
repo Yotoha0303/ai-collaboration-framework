@@ -1,5 +1,7 @@
 # AI 协同工程框架
 
+**中文** · [English](README.en.md)
+
 > 一套给「人 + 多 AI 协同开发真实软件项目」用的**约束框架**。
 > 它不教 AI 怎么写代码——它约束 AI **按什么次序、以什么证据、在什么边界内**产出，
 > 并让每一次产出都留下**可复核的痕迹**。
@@ -125,6 +127,13 @@
 `sre-operator` SRE 可观测性与稳定性专家 · `sec-auditor` 安全合规与权限审计师 ·
 `finops-controller` 云成本与资源控制师 · `rca-investigator` 故障复盘与根因分析师
 
+**这 10 类均已随框架提供「基础契约」实现**（覆盖全生命周期，见
+[`.claude/agents/`](.claude/agents/)）。各环的主责角色与交接物见 `AGENTS.md` §2.1。
+
+**领域角色**（如 web3 项目的 `contract-dev`）**不在其列**——按项目领域**按需新建**
+`.claude/agents/<角色名>.md`（跟踪见台账 `DEFER-006`），**不得**拿现有的顶替。
+**未实例化的角色当前不可派发**。
+
 ### 本框架附带的实现（注册表中无对应名）
 
 注册表登记的是**业务角色**。以下三个是**纪律的执行者**，不属那 10 类：
@@ -172,7 +181,10 @@
 
 ```
 AGENTS.md                        唯一约束源。四大纪律 / 门禁矩阵 / 五段协议 / 角色层定义
+AGENTS.en.md                     同上，英文版（同一规则源的语言投影）
 CLAUDE.md                        瘦入口。只做三件事：导入 AGENTS.md + 声明身份 + 启动自检
+README.en.md                     README 英文版
+LICENSE                          MIT
 
 prompts/
   AI总控.md                      总控必备提示词（二维认知模型 8 层级 × 11 阶段）
@@ -184,7 +196,7 @@ prompts/
   settings.json                  Stop hook 配置
   hooks/check-progress.ps1       进度页滞后守卫（fail-closed，见 §七）
   progress-page.txt              一行。进度页文件名的唯一事实源
-  agents/*.md                    已实例化的角色
+  agents/*.md                    已实例化的角色（10 类业务角色 + 3 类纪律执行者）
 
 launchers/
   start_claude.bat / start_claude.sh   启动器：锁定工作目录（见 §八）
@@ -192,6 +204,10 @@ launchers/
 docs/
   ledger.md                      未竟事项**唯一**台账（GAP/INC/DEFER）。**不在台账里的"还没做"等于不存在**
 ```
+
+> **双语口径（一句）**：`README` 与 `AGENTS.md` 各有一份英文版，**中文版是基线**；
+> 两者若不一致，**以中文版为准**（D4：不得让两处不同成熟度的事实并存——故此处明写谁为准）。
+> 其余文档（`prompts/*`、`docs/ledger.md`）**暂只有中文**，属主动延期范围，见台账。
 
 > ⚠️ **布局不唯一，本仓是「自托管」**：仓库 = **含 `.git`** 的那个目录（名字任意）。
 > 上表按**目标布局**（仓库是工作区根下的子目录 `project/`）标注；
@@ -329,3 +345,21 @@ Claude Code 的三条查找路径——`AGENTS.md` / `.claude/agents/` / `settin
    而被砍掉之后系统**看不出来**少了什么。
 4. **运行态三件**（`record.md` / `memory.md` / 进度页）**不要入库**——
    判据一句话：**它是"项目的交付物"，还是"AI 自己怎么干活的"？** 只有前者入库。
+
+---
+
+## 十一、许可与双语
+
+本框架以 **MIT** 许可开源（见 [`LICENSE`](LICENSE)）——可自由使用、修改、再分发与商用，
+**唯一要求是保留版权声明**；软件按"现状"提供，**不附带任何担保**。
+
+**语言**：`README` 与 `AGENTS.md` 各有中英两份。
+**中文版是基线**；两者若不一致，**以中文版为准**——这是 D4（单一事实源）的落地：
+两处并存时**必须明写谁为准**，否则就是两处不同成熟度的事实。
+
+| 中文（基线） | English |
+| --- | --- |
+| [`README.md`](README.md) | [`README.en.md`](README.en.md) |
+| [`AGENTS.md`](AGENTS.md) | [`AGENTS.en.md`](AGENTS.en.md) |
+
+> 其余文档（`prompts/*`、`docs/ledger.md`）**暂只有中文**——属**主动延期**范围，见台账。
