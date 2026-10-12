@@ -28,6 +28,32 @@ framework's **self-hosted layout**; in that case no `project/` subdirectory exis
 a hard-coded placeholder makes whole tables unrunnable under the self-hosted layout
 (`git -C project …` → `exit 128`).
 
+**The third layout: the framework repo already carries projects** (**several business projects may
+coexist**, `GAP-018`).
+
+| Layout | Workspace root | Repository (`$REPO`) | Note |
+| --- | --- | --- | --- |
+| **Target layout** | workspace root | `project/` (workspace root has **no** `.git`) | framework outside the repo |
+| **Self-hosted layout** | workspace root | **the workspace root itself** | framework inside the repo — a **deliberate decision** |
+| **Carrying layout** | workspace root | **the workspace root itself** | the repo also holds **independent checkouts of business projects** (each with its own `.git`, **untracked by the framework repo**) |
+
+> **Two hard constraints for the carrying layout** (otherwise it fails silently):
+> ① **Each business project is its own repo** — it is **not tracked by the framework repo**
+> (`git -C "$REPO" ls-files <dir>` should be empty), held out by the framework repo's
+> **`.gitignore` or the local `.git/info/exclude`**. **This exclusion must be measured**:
+> those paths **must not** appear in `git -C "$REPO" status --porcelain`.
+> ② **Framework rules govern the framework repo, not the business repos** — a business project has
+> **its own** `AGENTS.md` / `CLAUDE.md` and collaboration conventions; the framework's ten-stage gates
+> **apply to it** (it is an "adopter"), but **changes to framework files must not be mixed into the
+> business project's commits**.
+> **Test**: before committing, confirm which repo `pwd` lands in — one
+> `git rev-parse --show-toplevel` settles it.
+
+> ⚠️ **Why write this down**: this is precisely the source of the **dependency-design mismatch** —
+> writing "do not commit to the framework" as an **absolute ban that does not depend on the business
+> project's wording** will, under the **carrying layout**, **block framework-side fixes that ought to
+> happen**. **A rule must depend on the design, not on one specific project's wording** (`GAP-018`).
+
 ```
 <workspace root>/                  <- the session working directory
     CLAUDE.md                     <- thin orchestrator entry: @imports AGENTS.md + prompts/AI总控.md + prompts/角色契约.md
@@ -47,7 +73,13 @@ a hard-coded placeholder makes whole tables unrunnable under the self-hosted lay
     project/                      <- the repository (**target layout**: .git lives here. Absent under the self-hosted
                                      layout, where the repo is the workspace root)
         docs/ src/ tests/ deploy/ .github/ ...
+    <business-project>/           <- **carrying layout** (optional): each is an **independent repo**,
+                                     **untracked by this repo** (see the table above and `GAP-018`)
 ```
+
+**Test**: whether `<business-project>/` exists **does not affect** how `$REPO` resolves —
+`git rev-parse --show-toplevel` **always** returns the framework repo, because each business project
+is **its own repo root** and therefore **stops** the upward search.
 
 **Below, `project/…` always means a path inside the repository**, and **`prompts/…` always
 means the assets directory under the workspace root**.
@@ -461,6 +493,15 @@ work"?** Only the former is tracked.
 **Human decision**: changes are **not stacked up locally**; every change is **opened as a PR
 against the upstream author**.
 
+> ⚠️ **"Push to the upstream author" holds only for an *adopter*** (`GAP-018`): **the framework repo
+> itself is not a template repo being adopted** — it has no "upstream author" to push to;
+> **its delivery target is itself** (`origin` *is* the target repo).
+> **Test**: first decide whether **this repo is the framework repo or a business project repo**,
+> then decide whom to push to.
+> **Do not treat a mismatched phrase as a rule**: the rest of this section (secret scan / push-scope
+> review / conflict pre-check / baseline comparison) **applies to both** — only the sentence
+> "push to the upstream author" is **adopter-specific**.
+
 | Item | Value |
 | --- | --- |
 | `origin` | your fork (push branches here) |
@@ -650,9 +691,15 @@ the turn** and feeds the reason back to the model, requiring the page to be upda
 
 > **Locations always substitute the `$REPO` resolved in §0.0; never hard-code a directory name**
 > (as in the table above).
-> This project uses the **self-hosted layout** (the workspace root itself contains `.git`), so the
-> ledger actually lives in `docs/` under the workspace root — **it is inside the repository** and
-> is ✅ tracked per the §5 policy.
+> **This repo uses the self-hosted layout** (the workspace root itself contains `.git`), so the
+> ledger lives in `docs/` under the workspace root — **inside the repository**, ✅ tracked per §5.>
+> ⚠️ **Ownership under multiple repos (carrying layout) must be made explicit** (`GAP-018`):
+> **each repo has its own ledger and its own identifier space** — the framework repo's ledger records
+> **the framework's own** open items; **a business repo's ledger records its own**.
+> Their `GAP-` numbers **are unrelated and must never cross-reference each other**.
+> **Test**: before writing a ledger entry, run `git rev-parse --show-toplevel` to confirm **which repo
+> you are in**; **a cross-repo identifier reference is a phantom reference** (the trap measured in §8 —
+> a reader cannot open the file that number lives in).
 
 **New-number rule**: **continue the existing sequence**; never reuse a used number.
 **`git grep` the whole repo before registering** to confirm no collision (see D4).
