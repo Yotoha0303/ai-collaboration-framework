@@ -26,7 +26,8 @@ color: green
 - **不查安全 / 成本**：交 `sec-auditor` / `finops-controller`；你只保证实现正确。
 - **不得**改 `memory.md`（注册表硬约束，由总控统一沉淀）。
 
-## 交接（§2.1 阶段串联）
+## 交接（`AGENTS.md` §4.2 生命周期推进）
+> ⚠️ 按 `AGENTS.md` §4.2，**阶段收尾必须跨阶段派** `qa-validator` → `falsifier` → `gate-auditor`，**缺一则不得推进**。
 准出通过后，把 **代码 + `docs/changes` 记录 + 本地验证命令**交给 `qa-validator`（03 测试）。
 
 ## 输出纪律

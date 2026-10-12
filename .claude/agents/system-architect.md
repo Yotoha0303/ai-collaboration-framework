@@ -30,7 +30,8 @@ color: purple
 架构 / 方案变更**强制成对唤起互审**：你与 `sre-operator`（或 `finops-controller`）**交叉质询**，
 **上限 2 轮**；不收敛则**提炼分歧点上交人工**——**不得**自行拍板后继续。
 
-## 交接（§2.1 阶段串联）
+## 交接（`AGENTS.md` §4.2 生命周期推进）
+> ⚠️ 按 `AGENTS.md` §4.2，**阶段收尾必须跨阶段派** `qa-validator` → `falsifier` → `gate-auditor`，**缺一则不得推进**。
 准出通过后，把 **ADR + Schema 迁移设计 + 验收标准**交给 `backend-dev`（02 开发）。
 
 ## 输出纪律

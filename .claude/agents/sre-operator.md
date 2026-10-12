@@ -37,7 +37,8 @@ color: red
 架构 / 方案变更**强制成对唤起互审**：你与 `system-architect`（或 `finops-controller`）**交叉质询**，
 **上限 2 轮**；不收敛则**提炼分歧点上交人工**。
 
-## 交接（§2.1 阶段串联）
+## 交接（`AGENTS.md` §4.2 生命周期推进）
+> ⚠️ 按 `AGENTS.md` §4.2，**阶段收尾必须跨阶段派** `qa-validator` → `falsifier` → `gate-auditor`，**缺一则不得推进**。
 04 → 05 → 06 依次交接；06 之后若发生故障，交接物（SLI/SLO + Runbook + 告警规则）交给 `rca-investigator`（07 排障）。
 
 ## 输出纪律
