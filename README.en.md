@@ -54,7 +54,52 @@ business value.
 
 ---
 
-## 3. The four non-negotiable disciplines (Zero Tolerance)
+## 3. Topology and control flow: separation of three powers
+
+The framework does not rely on "the AI remembering to be careful." It relies on **mutually
+exclusive permissions plus one physical gate**:
+
+```mermaid
+flowchart TD
+    U(["Human: gives the task / makes the calls"]) --> O["Orchestrator (execution right)<br/>decompose · dispatch · consolidate · adjudicate<br/>does not edit code itself"]
+    O -->|"task contract"| B["Work role (production right)<br/>has a shell: Write / Edit / PowerShell<br/>code · tests · docs"]
+    O -->|"audit task"| R["Read-only auditor (falsify / adjudicate)<br/>falsifier · gate-auditor<br/>tools: Read / Grep / Glob only"]
+    B -->|"output + self-verification"| O
+    R -->|"attack list / verdict table<br/>+ list of commands to run on their behalf"| O
+    O -->|"runs the commands"| X["real stdout / exit code"]
+    X -->|"real results fed back"| R
+    R -->|"release / block / cannot determine"| O
+    O -->|"ends the turn"| H{"Stop hook (physical gate)<br/>progress-page HEAD SHA == repo HEAD ?"}
+    H -->|"mismatch"| BLK["emit decision:block<br/>reason fed back; the turn may not end"]
+    BLK --> O
+    H -->|"match / no page"| DONE(["released"])
+```
+
+**Four points that matter**:
+
+| Point | Content |
+| --- | --- |
+| **Execution right ≠ production right** | The orchestrator **does not edit code**; whoever edits code is a work role. When a role is missing the task **stops** (no silent downgrade) rather than "the orchestrator does it itself" |
+| **Read-only is mechanical** | The read-only auditors' `tools` **contain no shell at all** — a shell is itself a write backdoor (`Set-Content` can write to disk, delete files); blocking `Write` / `Edit` **does not block it** |
+| **Run-on-behalf → feed back → judge on the facts** | Read-only roles **cannot run commands**, so they produce an **attack list + a command list**; the orchestrator **runs them on their behalf** and feeds back the **real stdout**, and they **judge on the facts**. This is an **explicit division of labour, not a downgrade**; its crack ("did the run-on-behalf actually happen" has no criterion today) is registered as `GAP-005` |
+| **The physical gate does not rely on the model** | Before the turn ends, the Stop hook compares the **HEAD SHA recorded in the progress page** against `git rev-parse --short HEAD` and emits `decision:block` on mismatch — **a reminder gets ignored; a block does not** (mechanism in §9) |
+
+**Who reviews whom is a hard rule**: on finishing each lifecycle stage you must dispatch,
+in order, `qa-validator` → `falsifier` → `gate-auditor` (**a three-hop chain; missing one hop
+means you may not advance**). **Self-written self-verification by the implementer is not a
+stage-03 exit.**
+
+> 📄 **The rules live in `AGENTS.md`**: role layer and dispatch **§4** · the three-hop chain
+> **§4.2** · runtime state and the Stop hook **§5**. This section is only a **projection of the
+> topology**; where it disagrees with `AGENTS.md`, **`AGENTS.md` wins**.
+>
+> The repo's `prompts/AI协同工程架构.png` draws an **earlier fan-out view** (orchestrator →
+> parallel agents → runtime artefacts) and does **not** show the read-only audit or the
+> physical gate. It is **not a source of rules** — read this section for the topology.
+
+---
+
+## 4. The four non-negotiable disciplines (Zero Tolerance)
 
 ### D1 · Read it before you claim it — never infer
 Every conclusion must rest on **content actually read from a file** or **real command stdout**.
@@ -93,7 +138,7 @@ registering at all.**
 
 ---
 
-## 4. The gate matrix
+## 5. The gate matrix
 
 Ten pipeline stages, **all hard gates** — failing any stage's exit criteria **blocks** the next.
 **When the corresponding artefact does not exist, the stage is judged "not met" — not "not applicable."**
@@ -120,7 +165,7 @@ mechanical guards).
 
 ---
 
-## 5. Role contracts come in three layers (none may be skipped)
+## 6. Role contracts come in three layers (none may be skipped)
 
 This is the single **most commonly misunderstood** point in the framework: equating
 "role contract" with `.claude/agents/*.md` is wrong — that is only the third layer.
@@ -155,7 +200,7 @@ and are not among those ten:
 > `falsifier` / `gate-auditor` have `tools` of **`Read` / `Grep` / `Glob` only** — **no shell at all**.
 > The reason: **shell is itself a write backdoor** — `Set-Content` / `Out-File` / `Remove-Item`
 > can all write and delete files, so blocking `Write`/`Edit` alone **does not block it** —
-> that would be a **criterion crack** (the same shape as §9, "two doors, running one leaks").
+> that would be a **criterion crack** (the same shape as §11, "two doors, running one leaks").
 > **The cost is explicit**: read-only roles **cannot run commands**, so their execution is
 > **carried out by the orchestrator on their behalf** — they produce **attack lists / verdict
 > tables + command lists**, and the orchestrator feeds back **real stdout** before they judge.
@@ -177,7 +222,46 @@ and are not among those ten:
 
 ---
 
-## 6. File map of this repository
+## 7. The physical-fact layer: five places where "what actually happened this turn" lives
+
+```mermaid
+flowchart LR
+    subgraph WS["Workspace root (the launch directory)"]
+        P[".claude/progress-page.txt<br/>one line · the page-name pointer"]
+        RP[("record.md<br/>append-only · never edited")]
+        PG["Progress page (HTML)<br/>display projection · overwrite-synced"]
+        RD["README / AGENTS / docs<br/>the facts a reader can open"]
+    end
+    subgraph GT["Git tracking tree (the git ls-files measure)"]
+        T["tracked files<br/>pinned into history by a commit"]
+    end
+    RP -->|"what this step actually did"| PG
+    P -->|"single source of truth: the page name"| PG
+    RD --> T
+```
+
+| Place | What it is | Who writes it / how it changes | Tracked |
+| --- | --- | --- | --- |
+| **Workspace root** | The launch directory; the framework resolves its three lookup paths upwards from it | Determined by **where you launch** (the launcher locks it) | — |
+| **Git tracking tree** | The tracked files under `git ls-files` — **the mandated measure**, isolating build artefacts and dependencies | `git add` with explicit file paths, then commit | ✅ |
+| **`record.md`** | The **source** of the behaviour record: one command-level line per action, **existing lines never edited or deleted** | Append-only | ⬜ runtime state, kept out of commits (see `.gitignore`) |
+| **Progress page (HTML)** | The **human-facing projection**: status / case counts / coverage / ledger / timeline | **Overwrite**-synced | ⬜ as above |
+| **`.claude/progress-page.txt`** | **One line** giving the page's filename — **the single source of truth for the page name** | Renaming the page = editing this line | ✅ |
+
+**How they cooperate (one sentence)**: `record.md` answers "**what did this step actually do**",
+the progress page answers "**where are we overall now**" — they are **two projections of the same
+record** and must be updated **in the same turn**; update only one and the other becomes a
+**fact of a different maturity** (D4). The criterion **does not rely on good intentions**: the
+Stop hook reads **the name from the pointer file** and compares the page's HEAD SHA against the
+repo HEAD (mechanism in §9).
+
+> **Why the page name goes through a pointer**: the page gets **renamed** as a project advances.
+> Hard-code the name in a script or a doc and one rename **silently disables** it — and "silent"
+> is exactly what it looks like when it works.
+
+---
+
+## 8. File map of this repository
 
 ```
 AGENTS.md                        The single source of constraints. Disciplines / gate matrix /
@@ -218,7 +302,7 @@ docs/
 
 ---
 
-## 7. Runtime contract: recording has **two projections**
+## 9. Runtime contract: recording has **two projections**
 
 The framework requires the **behaviour record** and the **human-facing progress page** to be
 at the same maturity — this is the mechanical extension of D4:
@@ -264,7 +348,7 @@ creates both directly in the first session, **without asking and without reporti
 
 ---
 
-## 8. How to run it (this step is the easiest to get wrong, and getting it wrong fails silently)
+## 10. How to run it (this step is the easiest to get wrong, and getting it wrong fails silently)
 
 All three of Claude Code's lookup paths — `AGENTS.md` / `.claude/agents/` / `settings.json` —
 **scan only the launch directory and its ancestors, never downward.**
@@ -301,12 +385,12 @@ Therefore:
 
 ---
 
-## 9. How this framework grew
+## 11. How this framework grew
 
 The framework was not designed; it was **forced** out of a real project. Every adjustment, the
 evidence for it, what was rejected, and **what went wrong** deserves a record — see
-[`AGENTS.md`](AGENTS.md) §8 (Chinese), which lists the drift **actually caught and fixed**
-during the rollout as target examples.
+[`AGENTS.md`](AGENTS.md) §8 + [`docs/drift-cases.md`](docs/drift-cases.md), which
+list the drift **actually caught and fixed** during the rollout as target examples.
 
 These include several **costly mistakes** whose value exceeds any "best practice":
 
@@ -340,12 +424,12 @@ These records **are not rewritten**. What happened is an evidence chain, not a t
 
 ---
 
-## 10. Getting started
+## 12. Getting started
 
 1. **Launch from the workspace root**: run `launchers/start_claude.bat` (Windows) or
    `launchers/start_claude.sh` (Linux/macOS). **You must** launch this way — the three lookup
    paths **scan upward only**, and launching from elsewhere makes the framework **silently
-   absent** (see §8).
+   absent** (see §10).
 2. **Say what you need**: one sentence describing the task is enough. The **orchestrator** is
    responsible for locating it (lifecycle × system layer), choosing roles, dispatching,
    consolidating, and adjudicating — **you do not need to know which roles exist**.
@@ -386,6 +470,6 @@ When adopting it:
 
 ---
 
-## License
+## 13. License and language
 
 [MIT](LICENSE).
