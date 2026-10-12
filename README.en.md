@@ -313,6 +313,8 @@ docs/
   delivery-gates.md              Delivery-path details: the pre-commit local gate; the
                                  "instructions to be executed" class of document (read on demand)
   drift-cases.md                 Drift actually caught during the rollout (a snapshot; read on demand)
+  adopting.md                    **Adopting the framework**: the per-stage "language socket" table,
+                                 the minimal three-step bootstrap, the project checklist
   guard-self-test.md             Isolated-sandbox self-test of the progress-page guard:
                                  two copy-paste negative cases + the measured readings
 ```
@@ -547,80 +549,27 @@ measured readings are in [`docs/guard-self-test.md`](docs/guard-self-test.md):
 > **`exit 0` + JSON on stdout** (`exit 1` is reserved for the two notice-only channels). A
 > criterion has to look at the **right channel** (D1).
 
-### Preparing to adopt it
+### Adopting it: the gate's "language socket" + minimal bootstrap
 
-The framework itself is **decoupled** from any specific project — everything project-specific
-in `AGENTS.md` (repository paths, measured baseline numbers, the gap ledger) is a **replaceable
-instance**, not an invariant of the framework.
+**The sentence that makes it pluggable**: the ten gates constrain **the state machine** ("does
+this stage have an exit artefact, and is it testable"); **which command does the testing is the
+thing that goes in the socket** — the framework binds no language, no test runner, and no CI.
 
-When adopting it:
-
-1. **Put `AGENTS.md` in your launch directory** and replace the project-specific content section
-   by section (§0 location conventions, §7 baselines, §8 drift examples).
-   This repo uniformly uses `project/` as the **placeholder name** for the repo subdirectory;
-   rename it as appropriate.
-   **But never treat the placeholder as a criterion**: the repo is identified by
-   **containing `.git`**, and **its name is arbitrary** — do not decide whether a project
-   exists or is missing by "is there a directory called `project`."
-   Resolve the repo root with `git rev-parse --show-toplevel`; when the workspace root
-   **itself contains `.git`**, the repo **is the workspace root** (in which case there is no
-   `project/` subdirectory — that is a normal layout).
-2. **Instantiate the roles you need** from the registry into `.claude/agents/`.
-   Ten baseline lifecycle roles ship with the framework; **add domain roles as your project
-   requires** (e.g. `contract-dev` for web3). This framework's `falsifier` / `gate-auditor` /
-   `ssot-scribe` can be used as-is.
-3. **Keep D3 and the hook's negative cases.** These are the first two things to get cut from a
-   mechanism — and once cut, the system **cannot tell that anything is missing**.
-4. **Do not track the three runtime files** (`record.md` / `memory.md` / the progress page).
-   The one-line criterion: **is it "a deliverable of the project" or "how the AI does its own
-   work"?** Only the former is tracked.
-
-### The gate's "language socket": the framework fixes the checkpoint, you fill in the criterion
-
-**This is the sentence that makes the framework pluggable**: the ten gates constrain **the state
-machine** — "does this stage have an exit artefact, and is that artefact testable?" **Which
-command does the testing is the thing that goes in the socket**, filled in for your stack. The
-framework binds no language, no test runner, and no CI.
-
-| Stage | Checkpoint (fixed by the framework, `AGENTS.md` §2) | Socket: the criterion (**you fill it in**) |
+| Stage | Checkpoint (fixed) | Socket: the criterion (you fill it in) |
 | --- | --- | --- |
-| **01 Design** | ADR on disk + acceptance criteria **testable** | No fixed command — the ADR is a document; "testable" means the criteria are written in a form that can be judged true or false (e.g. Given-When-Then) |
-| **03 Test** | New cases **100% enrolled in the CI matrix** + coverage **configured threshold** | **Go stack**: `go vet ./... && go test -race ./...` (`-race` is **not optional**) · **Front-end stack**: `pnpm type:lint && pnpm test && pnpm build`, with the coverage threshold read from the **actual** `vitest.config` value |
-| **04 Build** | Immutable image **digest** + runtime assertion `REVISION == Git HEAD` | Container stack: `docker buildx build --provenance` + a startup assertion; a **non-container stack** either has an equivalent or the stage is judged **not met** — **not "not applicable"** |
-| **05 Deploy** | Deploy script **idempotent end to end** (two consecutive runs, no state mutation) | Run the same deploy script **twice** and compare the state hash before and after the second run |
-| **10 Automation** | Timer **precondition assertions** + **independently archived report** | Assert dependencies **explicitly** in the scheduled job (installed? credentials present?); **a missing precondition fails outright, it does not skip silently** |
-
-> 📄 **Three copy-pasteable Gate command shapes** are in [`docs/delivery-gates.md`](docs/delivery-gates.md)
-> (read on demand); **what each of the ten stages looks like in a real production repo** is in
-> [`docs/reference-implementations.md`](docs/reference-implementations.md) (read on demand).
-> Both are **references, not sources of rules**.
+| **03 Test** | New cases 100% in the CI matrix + coverage **configured threshold** | **Go stack** `go vet ./... && go test -race ./...` · **Front-end stack** `pnpm type:lint && pnpm test && pnpm build` |
+| **05 Deploy** | Deploy script idempotent end to end | Run the same deploy script **twice** and compare the state hash |
 
 ⚠️ **Do not read "my stack has no such artefact" as "this stage does not apply"**: when the
-artefact does not exist the stage is judged **"not met"** (it should exist and does not) —
-**not "not applicable."** That wording was narrowed down after a real **misjudgement**.
+artefact does not exist the stage is judged **"not met"** — **not "not applicable."**
 
-### Minimal bootstrap (three steps)
+**Minimal bootstrap (three steps)**: ① copy `launchers/` and `.claude/` into your workspace root ·
+② configure the `.claude/progress-page.txt` pointer (one line) · ③ fill in the project-specific
+parts of `AGENTS.md`.
 
-> **All three happen inside your new workspace; after them you can launch from the workspace
-> root.** The full conventions are in `AGENTS.md` §0.0.
-
-1. **Copy the launchers and `.claude/`** — move `launchers/` and the whole `.claude/` directory
-   into your workspace root. `.claude/` must **already exist at session start** to be loaded;
-   adding or moving it mid-session needs a `/hooks` reload or a session restart.
-2. **Configure `.claude/progress-page.txt`** — **one line**, holding your progress page's
-   filename. That one line is the page name's single source of truth: **renaming = editing this
-   line**, and neither the script nor any doc needs to change. Picking a name now is fine even if
-   the page does not exist yet — the guard **passes silently** when there is no page (its premise
-   is "the page exists and must not lag"; see §9).
-3. **Fill in the project-specific parts of `AGENTS.md`** — `AGENTS.md` §0 location conventions
-   (how your repo root resolves), §7 baselines (numbers measured on the spot, plus the commands to
-   re-check them), §8 drift examples (replace them with your own). **The framework is decoupled
-   from the project**: these three are **replaceable instances**, not invariants of the framework.
-
-> **A fourth thing (not part of the "three steps", but do not skip it)**: keep the **three
-> runtime files** out of commits — use a **repo-distributed** `.gitignore` that excludes only
-> `record.md` / `memory.md` / the progress page; it must **not** exclude deliverables or the
-> framework sources. The criterion is item 4 above.
+> 📄 **The per-stage socket table (01/03/04/05/10) · the full wording of the three steps · the
+> pre-adoption project checklist**: see [`docs/adopting.md`](docs/adopting.md) (**read on demand**).
+> **The source of rules is still `AGENTS.md`**; where that file disagrees, `AGENTS.md` wins (D4).
 
 ---
 
