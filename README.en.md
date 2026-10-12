@@ -275,7 +275,8 @@ prompts/
   AI总控.md                      Orchestrator prompt (2-D model: 8 layers × 11 stages)
   角色契约.md                     Role contracts: template (9 items) + registry (10 roles)
   全生命周期工程质量总监与系统架构师.md   Source disciplines (four + ten-stage checkpoints)
-  AI协同工程架构.png              Topology diagram
+  AI协同工程架构.png              Topology diagram (**an earlier fan-out view**; for the current
+                                 topology see §3)
 
 .claude/
   settings.json                  Stop hook config
@@ -293,6 +294,13 @@ docs/
                                  searches / evidence transcripts / verification commands / guard
                                  measurements). **Not read by default — open on demand**; the
                                  ledger body points here only when something needs re-checking
+  reference-implementations.md    Ten-stage reference implementations: what each stage's exit
+                                 looks like in a real production repo (read on demand)
+  delivery-gates.md              Delivery-path details: the pre-commit local gate; the
+                                 "instructions to be executed" class of document (read on demand)
+  drift-cases.md                 Drift actually caught during the rollout (a snapshot; read on demand)
+  guard-self-test.md             Isolated-sandbox self-test of the progress-page guard:
+                                 two copy-paste negative cases + the measured readings
 ```
 > ⚠️ **Layouts differ, and this repo is "self-hosted"**: the repo is the directory that
 > **contains `.git`** (any name). The table above is annotated for the **target layout**
@@ -439,6 +447,80 @@ These records **are not rewritten**. What happened is an evidence chain, not a t
 The three runtime files (`record.md` / `memory.md` / the progress page) are maintained by the
 framework automatically — **you do not need to manage them**; the progress page is the
 human-readable current status.
+
+### Walkthrough 1: the four gates inside one session
+
+> Scenario: **add a user-query endpoint**. Every gate below already exists in the rules
+> (sources are cited); this is not demo talk.
+> ⚠️ **This repo is the template** — the ten-stage gate matrix constrains **projects that adopt
+> the framework**. Run this walkthrough in this repo and you will **not** see code blocked; to
+> watch a real block, go to a **project that adopts the framework** (see §5).
+
+```
+You: add a user-query endpoint
+  │
+  ├─ ① The orchestrator tries to go straight into stage 02 (development)
+  │     └─ ✗ blocked by the "01 Design" hard gate — no ADR on disk, acceptance criteria not testable
+  │        It outputs the **blocking reason + release condition**, not "I'll start and backfill later"
+  │                                                                        (AGENTS.md §2 / D2)
+  ├─ ② Design completed, coding starts
+  │     └─ `backend-dev` writes the implementation (the role writes code, **not the orchestrator**)
+  │        Its output must pass the "pre-commit local gate" — the same set CI runs   (AGENTS.md §5)
+  │
+  ├─ ③ Stage wrap-up: the cross-stage three-hop chain, **missing one hop blocks the advance**
+  │     qa-validator  →  falsifier  →  gate-auditor                                 (AGENTS.md §4.2)
+  │       qa-validator: test cases independent of the implementer
+  │                     (**self-written self-verification by the implementer is not a stage-03 exit**)
+  │       falsifier   : read-only, no shell; produces an "attack list + command list"
+  │       the orchestrator runs them on its behalf → feeds back **real stdout** → falsifier judges
+  │
+  └─ ④ Before the turn ends: the Stop hook checks physically
+        ├─ progress-page HEAD SHA ≠ repo HEAD → **emit `decision:block`; the turn may not end**
+        │                                                                          (AGENTS.md §5)
+        └─ match / page not yet created       → released
+```
+
+**What you should notice**: ①③④ are **mechanisms** (gate matrix / role chain / Stop hook);
+only ② is "an AI doing the work." That is exactly the framework's position —
+**discipline cannot be fixed by reminders, only by mechanisms** (§1).
+
+### Walkthrough 2: prove the gate has teeth yourself (D3 in practice)
+
+**Why you should run this yourself**: the progress-page guard is a **silent-on-failure**
+criterion — get the path derivation wrong and it will **pass silently forever**, and "silent" is
+exactly what it looks like when it works. **"It said nothing when the page was missing" proves
+nothing**: that only shows that "no criterion applies" and "the script is dead" are
+**observationally indistinguishable** (ledger `GAP-002`).
+
+**Both cases must be run together** (measured here on Windows PowerShell 5.1; paths are built
+with `Join-Path` so no separator is hand-written):
+
+```powershell
+# Case ② the page EXISTS with a wrong SHA -> must emit {"decision":"block"}
+powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/check-progress.ps1
+
+# Case ① the page does not exist -> must be SILENT exit 0 (no output at all)
+powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/check-progress.ps1
+```
+
+⚠️ **Running it directly in the working tree will not give you a clean injection experiment**:
+
+- **Readers who cloned this repo**: runtime state (the progress page) is **not shipped with the
+  repo**, so the first command hits the **missing-page branch** — that is **case ①**, not ②;
+- **In the maintainer's working tree**: the command will most likely **emit block directly**,
+  because the page records an older SHA — but that only **restates the status quo**, it is not an
+  injection either.
+
+To get **two controlled readings**, follow the **isolated sandbox** steps in
+[`docs/guard-self-test.md`](docs/guard-self-test.md) (both the steps and the readings are
+**already measured**: injected wrong SHA → `decision:block`; missing page → no output, `exit 0`).
+
+> **Only if ② still has teeth can you conclude that ①'s silence means "no criterion applies"
+> rather than "the script is dead"** (D3). **Re-run both cases after renaming the page** — the
+> page name comes from `.claude/progress-page.txt`, so renaming means editing that one line.
+>
+> ⚠️ **Do not judge whether it has teeth by the exit code**: the block path is
+> **`exit 0` + JSON on stdout** (D1: a criterion has to look at the right channel).
 
 ### Preparing to adopt it
 
