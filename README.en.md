@@ -1,5 +1,19 @@
 # AI Collaboration Engineering Framework
 
+![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
+![Status: Experimental](https://img.shields.io/badge/status-experimental-orange.svg)
+![Runtime: Claude Code](https://img.shields.io/badge/runtime-Claude%20Code-8A2BE2.svg)
+![Hooks: PowerShell · Bash](https://img.shields.io/badge/hooks-PowerShell%20%C2%B7%20Bash-4B8BBE.svg)
+
+> **Documentation baseline**: this framework treats **Chinese as the single source of truth
+> (SSOT)**; the English documents (`README.en.md` / `AGENTS.en.md`) are a **language projection**.
+> Where they disagree, **the Chinese version wins** (D4).
+>
+> **Status stated honestly**: **Experimental**, **no version tag** (`git tag` measures empty).
+> This repo is the **template** — having no artefacts for stages 04/06–10 is a **property of a
+> template**, **not a "failure"**; it is **still bound by disciplines D1–D4 and the mechanical
+> guards** (see §5).
+
 > A **constraint framework** for "one human + several AIs developing real software projects."
 > It does not teach an AI how to write code — it constrains the **order**, the **evidence**,
 > and the **boundaries** within which an AI produces, and makes every deliverable leave a
@@ -599,6 +613,41 @@ artefact does not exist the stage is judged **"not met"** (it should exist and d
 
 ---
 
-## 13. License and language
+## 13. Contributing and roadmap: where the deep water is
+
+**Current stage**: the mechanisms work end to end (separation of powers + physical gate +
+negative cases in place); **no version has been released**.
+Open items live in **exactly one ledger** — [`docs/ledger.md`](docs/ledger.md):
+**anything "not yet done" that is not in the ledger does not exist**. Below are the **deep-water
+items** picked from that ledger; they are also where outside discussion is most welcome:
+
+| Id | The gap in one line | Why it is hard |
+| --- | --- | --- |
+| [`GAP-005`](docs/ledger.md) | Read-only auditors' execution is **run by the orchestrator on their behalf**, but "**did the run-on-behalf actually happen**" has **no criterion** — when it is missing, the output sits at `cannot determine`, **indistinguishable from "there really is no shell"** | It needs "run-on-behalf" **projected into a trace**, and that trace has to be **mechanically checkable**. Today there is only a minimal anchor (one line per run) — **not real-time, and it depends on the orchestrator writing it** |
+| [`GAP-002`](docs/ledger.md) | The guard is **doubly silent**: one wrong pointer disables **both** "silent when the page is missing" and "the SHA criterion"; and "silent when missing" is **observationally equivalent to dead code** | **Mitigated** (a pointer that exists but yields no name → `exit 1` + stderr); the **residue is an accepted cost**: a pointer naming a **non-existent** page stays silent |
+| [`GAP-017`](docs/ledger.md) | §4.2 gives the **hard rule and the three-hop chain**, but **no guard checks whether the previous stage's hard assets exist** | So "missing one hop blocks the advance" currently **relies on good intentions** — the same family of defect as "a reminder gets ignored; a block does not" |
+| [`GAP-018`](docs/ledger.md) | Several rules **depend on one particular project's wording** and **misfire or lose meaning** under another layout (two fixed; the rest need a line-by-line sweep) | The criterion is "**depend on the design, not on the wording**" — but *which* rules still depend on wording can only be found by reading |
+
+**How to contribute** (read `AGENTS.md` first — it is the source of rules):
+
+- **If you agree with the philosophy** — "discipline cannot be fixed by reminders, only by
+  mechanisms" — what is most missing is **adapter scripts**: fill the ten stages' criterion
+  sockets (§12) with **copy-pasteable commands for your stack**. That is the external
+  contribution this framework wants most.
+- **Found a crack in a criterion?** Bring a **negative case** (what fault injection makes it pass
+  silently). A bare "this looks wrong" is hard to accept here, because the framework's position
+  is **D3: a criterion must be falsifiable**.
+- **Found a doc that disagrees with measurement?** That falls under D4 and **outranks features**.
+  This framework really did catch a **phantom path** — several live documents pointing at a file
+  that did not exist, and **until someone measured it, every reader believed it**.
+
+> **Read before contributing**: [`AGENTS.md`](AGENTS.md) (source of rules) ·
+> [`docs/ledger.md`](docs/ledger.md) (the only ledger of open items).
+> **This README is not a source of rules** — it is an entry point and a projection; where they
+> disagree, **`AGENTS.md` wins**.
+
+---
+
+## 14. License and language
 
 [MIT](LICENSE).
