@@ -287,16 +287,18 @@ LICENSE                          MIT
 
 prompts/
   AI总控.md                      Orchestrator prompt (2-D model: 8 layers × 11 stages)
-  角色契约.md                     Role contracts: template (9 items) + registry (10 roles)
+  角色契约.md                     Role contracts: template (9 items) + registry (12 roles)
   全生命周期工程质量总监与系统架构师.md   Source disciplines (four + ten-stage checkpoints)
   AI协同工程架构.png              Topology diagram (**an earlier fan-out view**; for the current
                                  topology see §3)
 
 .claude/
   settings.json                  Stop hook config
-  hooks/check-progress.ps1       Progress-page staleness guard (fail-closed)
+  hooks/check-progress.ps1       Progress-page staleness guard (fail-closed, see §9)
+  hooks/check-numbers.ps1        Cross-branch identifier-collision guard (see §9)
+  hooks/README.md                Guard implementation detail (read on demand)
   progress-page.txt              One line: the single source of truth for the page filename
-  agents/*.md                    Instantiated roles
+  agents/*.md                    Instantiated roles (**12 business roles + 3 discipline enforcers**)
 
 launchers/
   start_claude.bat / .sh         Launchers: lock the working directory

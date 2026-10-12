@@ -57,25 +57,42 @@ coexist**, `GAP-018`).
 ```
 <workspace root>/                  <- the session working directory
     CLAUDE.md                     <- thin orchestrator entry: @imports AGENTS.md + prompts/AI总控.md + prompts/角色契约.md
-    AGENTS.md                     <- this file (source of constraints)
-    record.md / memory.md         <- runtime state
+    AGENTS.md / AGENTS.en.md      <- this file (source of constraints) and its English projection (Chinese is the baseline)
+    README.md / README.en.md      <- outward-facing docs + the **annotated file map** (§8)
+    LICENSE                       <- MIT
+    record.md / memory.md         <- runtime state (untracked)
     .claude/
         settings.json             <- Stop hook config
         progress-page.txt         <- one line: the progress page filename (the page may be renamed)
-        agents/                   <- execution-agent layer (instantiated roles)
+        agents/*.md               <- execution-agent layer (12 business roles + 3 discipline enforcers + README)
         hooks/check-progress.ps1  <- progress-page staleness guard
-    project-progress.html         <- the progress page, sibling to .claude/
+        hooks/check-numbers.ps1   <- cross-branch identifier-collision guard
+        hooks/README.md           <- guard implementation detail (read on demand)
+    project-progress.html         <- the progress page, sibling to .claude/ (untracked)
     prompts/                      <- framework assets
         AI总控.md                 <- orchestrator prompt (2-D cognitive model) — imported by CLAUDE.md
-        角色契约.md               <- role contract **template + registry** (9 items + 10 roles) — imported by CLAUDE.md
+        角色契约.md               <- role contract **template + registry** (9 items + 12 roles) — imported by CLAUDE.md
         全生命周期工程质量总监与系统架构师.md  <- source disciplines (four disciplines + ten checkpoints)
-        AI协同工程架构.png        <- topology diagram
+        AI协同工程架构.png        <- topology diagram (**earlier fan-out view**; live topology in `README` §3)
+    docs/                         <- the ledger and the **on-demand files** (detail off the resident path)
+        ledger.md                 <- the **only** ledger of open items
+        ledger-evidence/          <- the ledger's evidence appendices A–D
+        reference-implementations.md / delivery-gates.md / adopting.md
+        drift-cases.md / guard-self-test.md
+    launchers/                    <- launchers (lock the working directory)
     project/                      <- the repository (**target layout**: .git lives here. Absent under the self-hosted
                                      layout, where the repo is the workspace root)
         docs/ src/ tests/ deploy/ .github/ ...
     <business-project>/           <- **carrying layout** (optional): each is an **independent repo**,
                                      **untracked by this repo** (see the table above and `GAP-018`)
 ```
+
+> ⚠️ **This tree is a "location convention", not a file listing** — it marks **what role lives where**.
+> **The authoritative measure is `git ls-files`** (D1); when the tree disagrees with measurement,
+> **measurement wins** and the tree is updated.
+> **The fully annotated file map is `README.md` §8** (reader-facing); the two are **the same fact**,
+> and there is currently **no mechanical criterion keeping them from drifting** — that risk is folded
+> into `GAP-017`'s same-family description.
 
 **Test**: whether `<business-project>/` exists **does not affect** how `$REPO` resolves —
 `git rev-parse --show-toplevel` **always** returns the framework repo, because each business project
