@@ -175,8 +175,17 @@ try {
         foreach ($num in @($byNum.Keys | Sort-Object)) {
             $seen = @($byNum[$num] | Sort-Object)
             if ($seen.Count -gt 1) {
-                # Show the short oid so a reader can see WHY it counts as two files.
-                $shown = @($seen | ForEach-Object { $p = $_ -split '@'; $p[0] + ' (' + $p[1].Substring(0, 7) + ')' })
+                # Split on the LAST '@': the oid is trailing hex and can never contain
+                # one, while a PATH can (it is a legal filename character). Splitting on
+                # the first '@' would mis-parse such a path, and the short-oid slice
+                # would then throw — swallowing the collision report behind a
+                # "the guard itself errored" notice (measured).
+                $shown = @($seen | ForEach-Object {
+                    $i = $_.LastIndexOf('@')
+                    $p = $_.Substring(0, $i)
+                    $o = $_.Substring($i + 1)
+                    $p + ' (' + $o.Substring(0, [Math]::Min(7, $o.Length)) + ')'
+                })
                 $collisions.Add("  [$name] $num : " + ($shown -join '  |  '))
             }
         }
@@ -201,7 +210,11 @@ catch {
     # tree" — five different causes, one indistinguishable message (measured).
     # Keep it to the first line so the notice stays a notice.
     $why = ''
-    if ($null -ne $_.Exception -and $null -ne $_.Exception.Message) { $why = $_.Exception.Message }
+    if ($null -ne $_.Exception -and $null -ne $_.Exception.Message) {
+        # FIRST LINE only — the comment below means it: a multi-line Message would
+        # flood stderr and stop reading as a notice.
+        $why = ($_.Exception.Message -split "`r?`n")[0]
+    }
     $line = ''
     if ($null -ne $_.InvocationInfo -and $null -ne $_.InvocationInfo.ScriptLineNumber) { $line = ' @' + $_.InvocationInfo.ScriptLineNumber }
     Write-Notice ("守卫自身出错" + $line + "：" + $why)
