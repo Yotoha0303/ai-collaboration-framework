@@ -42,41 +42,10 @@
 > 把「禁止提交到框架」写成不依赖业务项目措辞的**绝对禁令**，在**带项目布局**下会**误伤**：
 > 它挡住的可能是**框架侧本来就该做的修复**。**禁令要依赖设计，不依赖某个具体项目的措辞**（`GAP-018`）。
 
-```
-<工作区根>/                        <- 会话工作目录
-    CLAUDE.md                     <- 总控入口（瘦）：@导入 AGENTS.md + prompts/AI总控.md + prompts/角色契约.md
-    AGENTS.md / AGENTS.en.md      <- 本文件（规则源）与其英文投影（中文为基线）
-    README.md / README.en.md      <- 对外说明 + **带注释的文件地图**（§八）
-    LICENSE                       <- MIT
-    record.md / memory.md         <- 运行态（不入库）
-    .claude/
-        settings.json             <- Stop hook 配置
-        progress-page.txt         <- 一行：进度页的文件名（页名可随进度更换）
-        agents/*.md               <- 执行 Agent 层（12 类业务角色 + 3 类纪律执行者 + README）
-        hooks/check-progress.ps1  <- 进度页滞后守卫
-        hooks/check-numbers.ps1   <- 编号跨分支撞车守卫
-        hooks/README.md           <- 守卫实现细节（按需读）
-    project-progress.html         <- 进度页，与 .claude/ 同级（不入库）
-    prompts/                      <- 框架素材
-        AI总控.md                 <- 总控必备提示词（二维认知模型）— 由 CLAUDE.md 导入
-        角色契约.md               <- 角色契约**模板 + 注册表**（9 项 + 12 角色）— 由 CLAUDE.md 导入
-        全生命周期工程质量总监与系统架构师.md  <- 纪律原文（四大纪律 + 十环卡点）
-        AI协同工程架构.png        <- 拓扑图（**较早的扇出视角**；实时拓扑见 `README` §三）
-    docs/                         <- 台账与**按需文件**（细则不常驻，用时再开）
-        ledger.md                 <- 未竟事项**唯一**台账
-        ledger-evidence/          <- 台账的取证附录 A–D
-        reference-implementations.md / delivery-gates.md / adopting.md
-        drift-cases.md / guard-self-test.md
-    launchers/                    <- 启动器（锁定工作目录）
-    project/                      <- 仓库（**目标布局**：.git 在此。自托管布局下无此行，仓库即工作区根）
-        docs/ src/ tests/ deploy/ .github/ ...
-    <业务项目>/                    <- **带项目布局**（可选）：各是**独立仓**、**不被本仓跟踪**（见上表与 `GAP-018`）
-```
-
-> ⚠️ **本树是「位置约定」，不是文件清单**——它只标**哪些位置有什么角色**。
-> **权威口径是 `git ls-files`**（D1）；树与实测不符时**以实测为准**并更新本树。
-> **带注释的完整文件地图在 `README.md` §八**（面向读者）；两处**同源**，
-> 目前**无机械判据防止它们漂移**——其风险已归入 `GAP-017` 的同族描述。
+> 📄 **带注释的完整文件地图见 [`README.md`](README.md) §八（按需读）**——本节**不重复它**
+> （D4：同一份事实不做两处副本；两处并存时**必有一处先过期**，本项目已实测过一次）。
+> 本节只给**位置约定**：**仓库 = 含 `.git` 的那个目录**（名字任意），`$REPO=$(git rev-parse --show-toplevel)`；
+> **权威口径是 `git ls-files`**（D1）——地图与实测不符时**以实测为准**。
 
 **判据**：`<业务项目>/` 是否存在**不影响** `$REPO` 的解析——`git rev-parse --show-toplevel` 返回的**永远是框架仓**，
 因为业务项目**各自是仓根**、会**截断**向上查找。

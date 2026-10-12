@@ -77,10 +77,25 @@ try {
     $projects = @()
     if (Test-Path -LiteralPath (Join-Path $ws '.git')) { $projects += $ws }
     try {
-        foreach ($d in @(Get-ChildItem -LiteralPath $ws -Directory -Force -ErrorAction SilentlyContinue)) {
+        # `-ErrorAction Stop` is deliberate: a FAILED enumeration is not the same
+        # fact as "there are no candidates", and collapsing the two is how a
+        # permission error becomes a silent pass (GAP-020's second half).
+        foreach ($d in @(Get-ChildItem -LiteralPath $ws -Directory -Force -ErrorAction Stop)) {
             if (Test-Path -LiteralPath (Join-Path $d.FullName '.git')) { $projects += $d.FullName }
         }
-    } catch { }
+    } catch {
+        Write-Notice "无法枚举工作区目录（枚举失败 ≠ 没有候选仓）。"
+        exit 1
+    }
+    # Only NOW is "no candidates" a fact rather than a failure to look.
+    #
+    # No candidates => silent exit, DELIBERATELY, even if git is unusable. This
+    # guard's subject is the identifier space inside adopter repos; a workspace
+    # with no repo at all is "not initialised", and AGENTS.md §5 requires that
+    # state to be silent (same convention as the progress-page guard). The
+    # instrument checks below therefore sit AFTER this exit, not before it — they
+    # test git, which is only relevant once there is something to measure.
+    # (Ruling: this ordering was briefly the other way; see ledger GAP-020.)
     if ($projects.Count -eq 0) { exit 0 }
 
     # Probe FUNCTIONALLY and BY EXIT CODE (never by the truthiness of output):
