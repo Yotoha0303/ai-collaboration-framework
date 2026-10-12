@@ -429,20 +429,20 @@ Claude Code 的三条查找路径——`AGENTS.md` / `.claude/agents/` / `settin
   │
   ├─ ① 总控试图直接进入 02 开发
   │     └─ ✗ 被「01 设计」硬门禁挡住 —— ADR 未落盘、验收标准不可测
-  │        输出的是**阻断原因 + 解除条件**，不是"先写着，后面再补"            （AGENTS.md §2 / D2）
+  │        输出的是「阻断原因 + 解除条件」，不是"先写着，后面再补"        （AGENTS.md §2 / D2）
   │
   ├─ ② 补齐设计后开始编码
-  │     └─ 派 backend-dev 写实现（写代码的是它，**不是总控**）
-  │        产出要过「提交前本地门禁」的那一套 = CI 的那一套                  （AGENTS.md §5）
+  │     └─ 派 backend-dev 写实现（写代码的是它，不是总控）
+  │        产出要过「提交前本地门禁」的那一套 = CI 的那一套               （AGENTS.md §5）
   │
-  ├─ ③ 阶段收尾：跨阶段三跳，**缺一则不得推进**                              （AGENTS.md §4.2）
+  ├─ ③ 阶段收尾：跨阶段三跳，缺一则不得推进                              （AGENTS.md §4.2）
   │     qa-validator  →  falsifier  →  gate-auditor
-  │       qa-validator：独立于实现方的测试用例（**实现方自写自验 ≠ 03 环准出**）
+  │       qa-validator：独立于实现方的测试用例（实现方自写自验 ≠ 03 环准出）
   │       falsifier   ：只读、无 shell，产出「攻击清单 + 命令清单」
-  │       总控代跑 → 回灌**真实 stdout** → falsifier **据实判分**
+  │       总控代跑 → 回灌真实 stdout → falsifier 据实判分
   │
   └─ ④ 结束本轮前：Stop hook 物理校验
-        ├─ 进度页 HEAD SHA ≠ 仓库 HEAD → **emit `decision:block`，本轮不得结束**  （AGENTS.md §5）
+        ├─ 进度页 HEAD SHA ≠ 仓库 HEAD → emit decision:block，本轮不得结束 （AGENTS.md §5）
         └─ 一致 / 页面尚未建立        → 放行
 ```
 
@@ -455,30 +455,30 @@ Claude Code 的三条查找路径——`AGENTS.md` / `.claude/agents/` / `settin
 而"静默"正是它正常时的表现。**"缺页时它没吭声"证明不了任何事**：那只说明
 「确无判据」与「脚本已死」**在观测上不可分**（台账 `GAP-002`）。
 
-**两个用例必须一起跑**（本机 Windows PowerShell 5.1 **实测**；路径一律用 `Join-Path` 拼，不手写分隔符）：
+**第一步：在你自己的工作树里先看一眼**（读数取决于你的工作树处于哪个分支）：
 
 ```powershell
-# 用例② 页面【存在】且写了错误 SHA -> 必须 emit {"decision":"block"}
-powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/check-progress.ps1
-
-# 用例① 页面不存在 -> 必须【静默 exit 0】（无任何输出）
 powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/check-progress.ps1
 ```
 
-⚠️ **直接在工作树里跑，你拿不到干净的注入实验**：
+| 你 | 看到什么 | 那属于哪个用例 |
+| --- | --- | --- |
+| **clone 本仓的读者** | **静默、无输出** | **用例①**——运行态（进度页）**不随仓库分发**，故命中缺页分支 |
+| **维护者的工作树** | `{"decision":"block", …}` | **既不是①也不是②**——它只是**复读现状**（页面记的是旧 SHA），**没有注入任何东西** |
 
-- **clone 本仓的读者**：运行态（进度页）**不随仓库分发**，故第一条命令走**缺页分支**——
-  那是**用例①**，不是②；
-- **在维护者的工作树里**：这条命令多半**直接 emit block**，因为进度页记的是旧 SHA——
-  那只是**复读现状**，也不是注入。
+**第二步：两个用例必须一起跑**——但要在**隔离沙箱**里跑，那里 HEAD 是你自己造的、
+页面是你自己写进去的，读数才可控。脚本与实测读数见
+[`docs/guard-self-test.md`](docs/guard-self-test.md)：
 
-要拿到**可控的两个读数**，照 [`docs/guard-self-test.md`](docs/guard-self-test.md) 的**隔离沙箱**步骤做
-（步骤与读数**均已实测**：注入错误 SHA → `decision:block`；缺页 → 无输出、`exit 0`）。
+- **用例①** 缺页 → 必须**静默 `exit 0`**（无任何输出）；
+- **用例②** 页面**存在**且写错误 SHA → 必须 emit `{"decision":"block"}`。
 
-> **只有 ② 仍有牙，才能反推 ① 的静默是"确无判据"，而不是"脚本死了"**（D3）。
+> **只有 ② 仍有牙，才能反推 ① 的静默是"确无判据"，而不是"脚本死了"**（D3）——
+> 这两个分支**在观测上等价**，单看 ① 永远分不出正常与死代码。
 > **改页名后务必重跑这两个用例**——页名由 `.claude/progress-page.txt` 指定，改名就是改那一行。
 >
-> ⚠️ **别用退出码判断它有没有牙**：block 路径是 **`exit 0` + stdout 的 JSON**（D1：判据要看对通道）。
+> ⚠️ **别用退出码判断它有没有牙**：block 路径是 **`exit 0` + stdout 的 JSON**
+> （`exit 1` 留给「只提示不阻断」的两条通道）。判据要看**对的那条通道**（D1）。
 
 ### 采用前的准备
 
@@ -533,7 +533,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/check-progress
 2. **配置 `.claude/progress-page.txt`**——**一行**，写你的进度页文件名。
    页名唯一事实源就是这一行：**改名 = 改这一行**，脚本与文档都不用动。
    页名先随便定也行——页面不存在时守卫**静默放行**（判据的前提是"页面存在且不得落后"，见 §九）。
-3. **在 `AGENTS.md` 里填项目专有内容**——§0 位置约定（你的仓库根怎么解析）、
+3. **在 `AGENTS.md` 里填项目专有内容**——`AGENTS.md` §0 位置约定（你的仓库根怎么解析）、
    §7 基线（当场实测的数字与复核命令）、§8 漂移示例（换成你自己的踩坑记录）。
    **框架与项目解耦**：这三处是**可替换的实例**，不是框架的不变量。
 

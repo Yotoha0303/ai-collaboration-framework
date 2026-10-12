@@ -475,22 +475,23 @@ You: add a user-query endpoint
   │
   ├─ ① The orchestrator tries to go straight into stage 02 (development)
   │     └─ ✗ blocked by the "01 Design" hard gate — no ADR on disk, acceptance criteria not testable
-  │        It outputs the **blocking reason + release condition**, not "I'll start and backfill later"
-  │                                                                        (AGENTS.md §2 / D2)
-  ├─ ② Design completed, coding starts
-  │     └─ `backend-dev` writes the implementation (the role writes code, **not the orchestrator**)
-  │        Its output must pass the "pre-commit local gate" — the same set CI runs   (AGENTS.md §5)
+  │        It outputs the blocking reason + the release condition,
+  │        not "I'll start it now and backfill later"                      (AGENTS.md §2 / D2)
   │
-  ├─ ③ Stage wrap-up: the cross-stage three-hop chain, **missing one hop blocks the advance**
-  │     qa-validator  →  falsifier  →  gate-auditor                                 (AGENTS.md §4.2)
+  ├─ ② Design completed, coding starts
+  │     └─ backend-dev writes the implementation (the role writes code, not the orchestrator)
+  │        Its output must pass the "pre-commit local gate" = the same set CI runs  (AGENTS.md §5)
+  │
+  ├─ ③ Stage wrap-up: the cross-stage three-hop chain; missing one hop blocks the advance
+  │     qa-validator  →  falsifier  →  gate-auditor                        (AGENTS.md §4.2)
   │       qa-validator: test cases independent of the implementer
-  │                     (**self-written self-verification by the implementer is not a stage-03 exit**)
+  │                     (self-written self-verification is not a stage-03 exit)
   │       falsifier   : read-only, no shell; produces an "attack list + command list"
-  │       the orchestrator runs them on its behalf → feeds back **real stdout** → falsifier judges
+  │       the orchestrator runs them on its behalf → feeds back real stdout → falsifier judges
   │
   └─ ④ Before the turn ends: the Stop hook checks physically
-        ├─ progress-page HEAD SHA ≠ repo HEAD → **emit `decision:block`; the turn may not end**
-        │                                                                          (AGENTS.md §5)
+        ├─ progress-page HEAD SHA ≠ repo HEAD → emit decision:block; the turn may not end
+        │                                                                  (AGENTS.md §5)
         └─ match / page not yet created       → released
 ```
 
@@ -506,35 +507,34 @@ exactly what it looks like when it works. **"It said nothing when the page was m
 nothing**: that only shows that "no criterion applies" and "the script is dead" are
 **observationally indistinguishable** (ledger `GAP-002`).
 
-**Both cases must be run together** (measured here on Windows PowerShell 5.1; paths are built
-with `Join-Path` so no separator is hand-written):
+**Step one: take a first look inside your own working tree** (the reading depends on where your
+working tree sits):
 
 ```powershell
-# Case ② the page EXISTS with a wrong SHA -> must emit {"decision":"block"}
-powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/check-progress.ps1
-
-# Case ① the page does not exist -> must be SILENT exit 0 (no output at all)
 powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/check-progress.ps1
 ```
 
-⚠️ **Running it directly in the working tree will not give you a clean injection experiment**:
+| You | What you see | Which case that is |
+| --- | --- | --- |
+| **A reader who cloned this repo** | **silent, no output** | **Case ①** — runtime state (the progress page) is **not shipped with the repo**, so the missing-page branch is hit |
+| **The maintainer's working tree** | `{"decision":"block", …}` | **Neither ① nor ②** — it merely **restates the status quo** (the page records an older SHA); **nothing was injected** |
 
-- **Readers who cloned this repo**: runtime state (the progress page) is **not shipped with the
-  repo**, so the first command hits the **missing-page branch** — that is **case ①**, not ②;
-- **In the maintainer's working tree**: the command will most likely **emit block directly**,
-  because the page records an older SHA — but that only **restates the status quo**, it is not an
-  injection either.
+**Step two: both cases must be run together** — but in an **isolated sandbox**, where the HEAD is
+one you created and the page is one you wrote, so the readings are controlled. The script and the
+measured readings are in [`docs/guard-self-test.md`](docs/guard-self-test.md):
 
-To get **two controlled readings**, follow the **isolated sandbox** steps in
-[`docs/guard-self-test.md`](docs/guard-self-test.md) (both the steps and the readings are
-**already measured**: injected wrong SHA → `decision:block`; missing page → no output, `exit 0`).
+- **Case ①** no page → must be **silent `exit 0`** (no output at all);
+- **Case ②** the page **exists** with a wrong SHA → must emit `{"decision":"block"}`.
 
 > **Only if ② still has teeth can you conclude that ①'s silence means "no criterion applies"
-> rather than "the script is dead"** (D3). **Re-run both cases after renaming the page** — the
-> page name comes from `.claude/progress-page.txt`, so renaming means editing that one line.
+> rather than "the script is dead"** (D3) — the two branches are **observationally equivalent**,
+> so ① alone can never separate "normal" from "dead code."
+> **Re-run both cases after renaming the page** — the page name comes from
+> `.claude/progress-page.txt`, so renaming means editing that one line.
 >
 > ⚠️ **Do not judge whether it has teeth by the exit code**: the block path is
-> **`exit 0` + JSON on stdout** (D1: a criterion has to look at the right channel).
+> **`exit 0` + JSON on stdout** (`exit 1` is reserved for the two notice-only channels). A
+> criterion has to look at the **right channel** (D1).
 
 ### Preparing to adopt it
 
@@ -601,10 +601,10 @@ artefact does not exist the stage is judged **"not met"** (it should exist and d
    line**, and neither the script nor any doc needs to change. Picking a name now is fine even if
    the page does not exist yet — the guard **passes silently** when there is no page (its premise
    is "the page exists and must not lag"; see §9).
-3. **Fill in the project-specific parts of `AGENTS.md`** — §0 location conventions (how your repo
-   root resolves), §7 baselines (numbers measured on the spot, plus the commands to re-check
-   them), §8 drift examples (replace them with your own). **The framework is decoupled from the
-   project**: these three are **replaceable instances**, not invariants of the framework.
+3. **Fill in the project-specific parts of `AGENTS.md`** — `AGENTS.md` §0 location conventions
+   (how your repo root resolves), §7 baselines (numbers measured on the spot, plus the commands to
+   re-check them), §8 drift examples (replace them with your own). **The framework is decoupled
+   from the project**: these three are **replaceable instances**, not invariants of the framework.
 
 > **A fourth thing (not part of the "three steps", but do not skip it)**: keep the **three
 > runtime files** out of commits — use a **repo-distributed** `.gitignore` that excludes only
