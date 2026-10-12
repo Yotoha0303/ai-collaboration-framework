@@ -388,6 +388,42 @@ The three toolchains do not block one another: when dispatching a new feature st
 
 ---
 
+### 4.2 Lifecycle advance (hard rule: every stage must hand off across stages)
+
+**The problem** (measured during rollout): the orchestrator readily mistakes "I dispatched an
+implementer, and the implementer brought its own unit tests" for "the 03 test stage passed", and so
+dispatches five `backend-dev` tasks inside one stage (02 development) and **never crosses a stage** —
+03 test and the D2 verdict are skipped entirely.
+**"Several sub-tasks of the same role inside one stage" is not lifecycle advance** (that is parallel
+convergence *within* stage 02).
+
+**Hard rule**: after finishing one **lifecycle stage**'s output, you **must dispatch these roles in
+order**; **skip one and you may not enter the next stage** (D2 hard stage gates):
+
+| # | Role | Duty | Exit criterion |
+| --- | --- | --- | --- |
+| 1 | `qa-validator` | **Independent** 03-stage testing: extreme cases, load, concurrency races, jitter injection | Test cases **independent of the implementer**; boundaries named |
+| 2 | `falsifier` | **Negative falsification** of criteria/gates (read-only; produces an attack list + commands to be run on its behalf) | For every criterion: "what fault injection would let it pass silently?" |
+| 3 | `gate-auditor` | Stage-gate verdict (read-only; per the §2 gate matrix) | Issues **release / block / cannot determine** |
+
+**Why the 03 stage must be independent of the implementer** (D3): a test the implementer wrote itself
+**may look like it tests and in fact not test** — measured during rollout (a coverage script printing
+100% on an empty denominator; a comparison test with the parameter under test set to 0).
+**"The implementer wrote and verified it" is NOT "the 03 test stage passed"** — the two are not
+observationally equivalent; do not conflate them.
+
+**How the read-only roles execute**: `falsifier` / `gate-auditor` have no shell (see the collaboration
+discipline above). They produce an **attack list / verdict table + a list of commands to be run on
+their behalf**; the orchestrator runs them and **feeds back the real stdout**, after which they judge
+against it.
+
+> **Cost and position**: this rule makes every stage **three hops longer** (test -> falsify -> verdict).
+> The framework holds that this must be paid — **developing across a gate (02 first, 03 later) is more
+> expensive than three extra hops**: what the former produces is a criterion you cannot trust, and an
+> untrustworthy criterion goes on **looking correct** in every later stage.
+
+---
+
 ## 5. Runtime artefact contract
 
 ### Initialise on first use (**no report needed**)
@@ -686,6 +722,39 @@ the turn** and feeds the reason back to the model, requiring the page to be upda
 
 **New-number rule**: **continue the existing sequence**; never reuse a used number.
 **`git grep` the whole repo before registering** to confirm no collision (see D4).
+
+---
+
+### 6.1 The identifier space is **repo-wide** and **cross-branch** — looking only at the current HEAD is a **false guard**
+
+> ⚠️ **This has been falsified three times** (measured in a real project): `docs/changes/` held **three
+> `022`s**; and two **parallel unmerged branches** collided twice **in the same round** (`030`/`031`
+> against `029`). Every time, the guard command (`git ls-files docs/changes/` / `git grep`) **was
+> green** — because it **sees only the current checkout**, while **the number space is shared across
+> branches**: each branch picks independently, and they only collide once merged.
+
+**The correct measure**:
+
+- When picking a number, look at the **union of all branches**, not HEAD. **List each ref's tree with
+  `git ls-tree`** (`git ls-tree -r --name-only <ref> -- "$REPO/docs/changes/"`), over every
+  `refs/heads` + `refs/remotes`.
+- ⚠️ **Do not use `git log --all --name-only`** — it **simplifies merges by default**, so **files
+  introduced by a merge commit do not appear**; the union **undercounts** and you pick a number that
+  is **already taken**. Measured during rollout: a file was missed exactly this way, and an occupied
+  number was chosen. If you must use log, add `-m`; but **`ls-tree` is more reliable** (it lists the
+  tree's current contents, independent of merge simplification).
+- **When working on a parallel branch**, look one step ahead: **between your writing and your merge,
+  another branch will take numbers too**. Measured here: "two postponements collided in the same
+  round" — **the problem is not that one number was chosen badly; it is that the method of choosing
+  does not hold**.
+- **Remember this defect's shape**: it **does not ring** — the guard is green, the number has
+  collided, and it blows up at merge. Same family as §8's "tool name silently dropped": **get the
+  criterion wrong and, like this, it will never raise the alarm itself**.
+- **Backstop**: before merging, do a conflict pre-check on **identifier-bearing files**
+  (`git merge-tree`, see §5 mandatory-before-pushing 3); an identifier collision **does show up as a
+  conflict** in `merge-tree` — that is the one place that will raise the alarm for you.
+  (**Mechanical implementation**: the `.claude/hooks/check-numbers.ps1` Stop hook already checks the
+  per-ref `ls-tree` union on this basis, and reports on collision.)
 
 ---
 
