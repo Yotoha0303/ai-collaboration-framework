@@ -495,9 +495,20 @@ You: add a user-query endpoint
         └─ match / page not yet created       → released
 ```
 
-**What you should notice**: ①③④ are **mechanisms** (gate matrix / role chain / Stop hook);
-only ② is "an AI doing the work." That is exactly the framework's position —
-**discipline cannot be fixed by reminders, only by mechanisms** (§1).
+**What you should notice**: the four gates are **not equally mechanical** — this has to be said
+plainly, or it becomes an overclaim:
+
+| Gate | What makes it work | How mechanical |
+| --- | --- | --- |
+| ① The stage-01 gate | A **rule** (D2) — it holds if the orchestrator **follows it** | ⚠️ **Rule only**: the guard that checks "does the previous stage's hard asset exist" is **not built yet** (ledger `GAP-017`) |
+| ② Pre-commit local gate | **Commands** — it does not pass, it does not ship | ✅ Mechanical (but **someone/CI must actually run it**) |
+| ③ The three-hop chain | **Role contracts + tool allow-list** | ⚠️ **Half mechanical**: "read-only" is mechanical (no shell in `tools`), but "**was it actually dispatched**" has **no guard** |
+| ④ The Stop hook | A **process** — it really does block before the turn ends | ✅ **Purely mechanical**: the one link that depends on nobody's good intentions |
+
+**This is precisely the framework's position**: discipline cannot be fixed by reminders, only by
+mechanisms (§1) — **and you state exactly how much mechanism there is**. The two ⚠️ rows above
+are **known, already-registered** gaps, not "we'll fix it later" hand-waving; `GAP-017`'s release
+condition is written in the ledger.
 
 ### Walkthrough 2: prove the gate has teeth yourself (D3 in practice)
 
