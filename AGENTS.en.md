@@ -102,6 +102,32 @@ both `CLAUDE.md` and `AGENTS.md` support `@path` imports, expanded at startup; a
 > This workspace's `memory.md` is the managed SSOT. The two must never be mixed or substituted
 > for one another.
 
+### 0.2 Pre-execution document sync (the **two anchors**)
+
+**Read the documents into place before acting** — the "zero-assumption principle": **never** act on
+unverified assumptions or stale context.
+
+**The two anchors answer different questions and are not interchangeable**:
+
+| Anchor | Where | Answers |
+| --- | --- | --- |
+| **Plan anchor** | `"$REPO"/docs/planning/` | **"Where are we going, why, and what is the architecture spec?"** — milestones, target specs, **interface freezes**, roadmap. The **compass**. |
+| **Trail anchor** | `"$REPO"/docs/changes/` | **"What exactly changed this step, why, and how was it verified?"** — the **trail**. |
+
+Plus the **only ledger** (what is still not done) and **ADRs** (why it was decided this way).
+
+**Three steps before executing** (the expansion of §3 item 1, the entry review):
+
+1. **Read**: `planning/` + the ledger + the relevant `changes/` and `adr/`.
+2. **Judge the state (done vs not done)**: **done = a non-negotiable regression baseline** — never rewrite,
+   duplicate or dismantle working functionality without an explicit architectural mandate. Separate
+   **actionable** items from **blocked** ones (external dependency / missing credentials / missing params).
+3. **Fix the smallest scope for this step** — do not widen it (same root as the small-commit rule in §5).
+
+> ⚠️ **Why this is a hard section**: in a real production repo, reading only `changes/` while skipping the
+> README and the issue tracker misses "how the project describes its own scope" and "what the author
+> wants right now" — **documents are not the whole picture**.
+
 ---
 
 ## 1. The four non-negotiable disciplines (Zero Tolerance)
@@ -189,6 +215,14 @@ applicable"** (**this holds only for the subjects below**).
 
 **Before entering any stage**: perform the "entry review" (§3, item 1) — list whether the
 previous stage's hard assets are met; if not, block.
+
+> 📄 **What each stage looks like in production, and which command decides its exit criteria**:
+> see [`docs/reference-implementations.md`](docs/reference-implementations.md) (**read on demand**).
+> It is drawn from **two real production repos'** committed files — e.g. stage 04's "refuse to
+> overwrite an immutable tag", stage 05's "inject a bad image and prove the rollout fails",
+> stage 06's "four fault drills", stage 08's "a corrupted dump must be rejected", stage 10's
+> "bounded load test + hard request cap". **That file is a reference, not the authority**;
+> the exit criteria remain those in this table.
 
 > **§4.2 (lifecycle advance) mirrors this section**: **advancing is the other half of the gate.**
 > Each **lifecycle stage**'s handover must dispatch, in order, `qa-validator` (independent
@@ -422,7 +456,7 @@ work"?** Only the former is tracked.
 
 ---
 
-### Delivery path: always via PR, pushed to the upstream author
+### Delivery path: small commits + always via PR, pushed to the upstream author
 
 **Human decision**: changes are **not stacked up locally**; every change is **opened as a PR
 against the upstream author**.
@@ -462,7 +496,79 @@ gh pr create --repo <author-repo> --base main --head <you>:<branch>   # open the
 > and has been measured in a real project. At a critical floor, that difference is enough to be
 > green locally and red on CI.
 
----
+**Small commits (hard requirement)**: **one feature / one logical unit per commit** — **never batch a
+large block into a single commit**.
+- The message says **what changed, why, and how it was verified** (**including the falsification
+  result**); **"it looks right" is not accepted**.
+- Each commit must be **independently readable and revertable**; **unrelated changes never share a commit**.
+- Produce per §3's five segments and pass §4.2's test stage **before** committing; **never stuff an
+  unverified block into one commit**.
+- This is **part of the delivery path**: small commits let a PR be reviewed commit by commit, and let
+  `git bisect` locate **which step introduced a regression** — same root as §4.2: **only what is
+  verifiable at every step can be advanced**.
+
+**Three quantitative criteria** (source: a real production repo's adoption — turning "small" from a
+slogan into a measurable scale):
+
+1. **Magnitude**: each commit should be an **increment of roughly 3% of the target capability** — i.e.
+   "one independently describable unit of improvement", not "one module". **Test**: if a commit cannot
+   say which single thing it improves, it is too big.
+2. **Gate**: **every increment must pass the tests before it is committed**. **A broken commit must never
+   enter the git history** — `git bisect` presupposes that **every step in the history runs**.
+3. **Isolation**: **unrelated changes never share one commit** (already stated above) — mixing them makes
+   a single revert impossible.
+
+> ⚠️ **These three share a root with the next rule**: **"small" is measurable** (magnitude / gate /
+> isolation), not a subjective sense of "a bit smaller". **The criterion is written as "roughly 3%"
+> rather than "small" precisely because "small" cannot be falsified** (D3).
+
+> ⚠️ **This rule must be pushed down to "whoever actually writes the code", or it is just a slogan**
+> (measured during rollout): the code writers are **subagents**, each with a **fresh context**, and they
+> do not automatically read §5 of this file. If the dispatch merely says "complete task X", they write
+> the whole module in one go and the orchestrator then makes **one huge commit per agent task** — measured
+> at **+1500~3400 lines** in a single commit, exactly the shape this rule forbids. **Two fixes, both required**:
+> 1. **Put it in the dispatch prompt explicitly** ("commit by logical unit — commit as soon as one
+>    independently verifiable unit is done; the `docs/changes` record travels with the unit"), because
+>    subagents **will not** read it from §5 themselves.
+> 2. **Add the same requirement to the role output contracts** (§4.1 / `prompts/角色契约.md`) so that
+>    "small commits" is a role's **inherent output**, not something the orchestrator must remember to say.
+> **Criterion**: one agent task's output **should not** be a single `+N`-line commit; if that happens,
+> **the dispatch failed to carry the rule**, not the agent.
+
+### Pre-commit local gate (**the set you run locally *is* the set CI runs**)
+
+**Criterion**: **if "run it before committing" cannot actually be run on this machine, it is not a
+gate — it is only a reminder.** So fix CI's checks as a **copy-pasteable command set**, split into
+Gates per stack; **if it does not pass, do not commit** (same root as "a broken commit must never
+enter the history").
+
+**Three generalisable requirements**: ① **the same set** (if local and CI differ, the "green locally,
+red on CI" red **carries no information**) · ② **`--race` / race detection is not optional**
+(concurrency correctness is visible **only** to a race detector) · ③ **fail on a missing
+precondition, never skip silently** (a silent skip makes "did not run" look like "ran").
+
+> 📄 **The copy-pasteable Gate commands and per-item rationale are in
+> [`docs/delivery-gates.md`](docs/delivery-gates.md) (read on demand)**.
+> **The authority remains this section**; that file yields to it (D4).
+
+### Pending-action documents (**the things only a human or an external platform can do**)
+
+**The problem**: every delivery chain has a set of things **an AI cannot do** — credentials to add in a
+platform panel, branch-protection required checks, domain allow-lists, platform-side env vars. They
+**must be listed explicitly**, or they sit **in no ledger and owned by nobody**, surfacing as
+"the feature is done but integration does not work".
+
+**Four hard requirements**: ① **give them their own document** (e.g. `docs/CICD-待完成.md`), **not mixed
+into the `GAP-` ledger** (what is owed is not code, it is an **external action**) · ② **state its nature**:
+it is a **"pending action", not a historical record**, so it **must agree with the repo as measured**
+(the exact opposite of §5's "historical snapshots are not rewritten" — **the criterion is "already
+happened" vs "still to do"**) · ③ **each row answers only three things**: what is missing / where to add
+it / **who does it** (only "a human" or "the platform"; **no row is something an AI can do**) ·
+④ **mark blocking relationships and pull the blockers out into their own list** (`blocking=no` does
+**not** mean "no need to do" — **that distinction must be written down**).
+
+> 📄 **Details (including the reverse trade-off "also list the things measured to need no configuration")
+> are in [`docs/delivery-gates.md`](docs/delivery-gates.md) (read on demand)**.
 
 ### Progress-page sync (mechanically enforced by a hook)
 
