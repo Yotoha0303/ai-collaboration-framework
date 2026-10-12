@@ -1,30 +1,68 @@
 # Stop-hook guard: identifier numbers must not collide ACROSS BRANCHES.
 #
-# The number space of docs/changes/NNN-*.md is shared by the WHOLE repo, across
-# ALL branches. Two parallel branches each pick the same number and the collision
-# only surfaces at merge time. A guard that looks only at HEAD is a FALSE guard:
-# it stays green while the numbers collide. Measured in the project this
-# framework was built for: three files all numbered 022 on one branch, and two
-# further cross-branch collisions in a single round - every one of them invisible
-# to `git ls-files docs/changes/` (which sees only the current checkout).
+# The number space of an adopter's `docs/changes/NNN-*.md` is shared by the WHOLE
+# repo, across ALL branches. Two parallel branches each pick the same number and
+# the collision only surfaces at merge time. A guard that looks only at HEAD is a
+# FALSE guard: it stays green while the numbers collide. Measured in a real
+# project this framework was built for: three files all numbered 022 on one
+# branch, and two further cross-branch collisions in a single round - every one
+# of them invisible to `git ls-files docs/changes/` (which sees only the current
+# checkout).
 #
 # CRITERION (the whole point): union the CURRENT state of every branch and remote
 # branch, then a number that names >=2 DISTINCT files is a collision. Not "does
 # HEAD have a duplicate" - HEAD cannot, the filenames are distinct there.
 #
 # Exit 0 with no output   -> no collision, allow the turn to end.
-# Exit 1 with stderr      -> a collision (or the guard could not run). NOTICE, not
+# Exit 1 with stderr      -> a collision, OR the guard could not run (git
+#                            unusable, exit code untrustworthy). NOTICE, not
 #                            block: the colliding branch may be one the current
-#                            session must not rewrite, so this informs rather than
-#                            blocks. (exit 1 is the documented notice channel; see
-#                            check-progress.ps1 for why not `systemMessage`.)
+#                            session must not rewrite, so this informs rather
+#                            than blocks. (exit 1 is the documented notice
+#                            channel; see check-progress.ps1 for why not
+#                            `systemMessage`.)
 #
 # Paths derive from the script's OWN location, never the working directory.
-# A workspace with no orchestrated project (no child holding .git) is silent:
-# there is no number space to check, which is "not initialised", not a fault.
+# Candidates are the workspace root ITSELF (self-hosted layout) plus every child
+# holding `.git` (target / carrying layout). No candidate at all is silent: there
+# is no number space to check, which is "not initialised", not a fault.
+#
+# THE ONE RULE (same as check-progress.ps1): every git call goes through
+# `Invoke-GitChecked`, and the EXIT CODE is the only criterion -- output is a
+# PAYLOAD only and is NEVER the criterion. A positive probe plus a NEGATIVE
+# CANARY force the binary to disagree across two inputs; without the canary, "the
+# exit code means something" is an assumption, not a criterion.
 
 $ErrorActionPreference = 'Stop'
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
+
+function Invoke-GitChecked {
+    param([scriptblock]$GitCall)
+    $script:__gitExit = $null
+    $out = $null
+    try {
+        # Scoped EAP: a native command's non-zero exit writes stderr, and the
+        # outer `Stop` would promote that to a terminating error which the outer
+        # catch swallows into silence. This scoped EAP covers THAT case only -- it
+        # does NOT cover "command not found" (CommandNotFoundException), which is
+        # a statement-terminating error and is handled by the catch below.
+        $out = & { $ErrorActionPreference = 'Continue'; & $GitCall; $script:__gitExit = $LASTEXITCODE }
+    } catch {
+        # A git that cannot even be launched lands here: CommandNotFoundException
+        # (git not on PATH), or the ApplicationFailedException of a zero-byte /
+        # truncated git.exe. Leaving Exit as $null keeps `.Exit -eq 0` false --
+        # fail closed, never silent.
+        $script:__gitExit = $null
+        $out = $null
+    }
+    return [pscustomobject]@{ Exit = $script:__gitExit; Text = [string]::Join("`n", @($out)).Trim() }
+}
+
+function Write-Notice([string]$Text) {
+    # One channel for every "guard could not run" branch, so they stay same-shaped
+    # (D4: two facts of different maturity must not coexist).
+    [Console]::Error.WriteLine("编号守卫未运行：" + $Text + "本轮未检查编号撞车。")
+}
 
 try {
     # <workspaceRoot>/.claude/hooks/check-numbers.ps1  ->  <workspaceRoot>
@@ -32,52 +70,114 @@ try {
     $claudeDir = Split-Path -Parent $hooksDir
     $ws = Split-Path -Parent $claudeDir
 
-    # Projects = EVERY child of the workspace holding a .git entry, not just the
-    # first. A multi-project workspace is the normal case (measured: a workspace
-    # with both `go-order-...` and `koliance` - picking the first, alphabetically,
-    # silently watched the wrong repo and reported "clear" while a real collision
-    # sat in the other). Each project is checked; a collision in ANY of them is
-    # reported.
+    # Candidates = the workspace root ITSELF, plus EVERY child holding a `.git`
+    # entry. The root itself matters: under the self-hosted layout the repo IS the
+    # workspace root, and a child-only scan would find zero projects and silently
+    # pass. Children matter under the target and carrying layouts.
     $projects = @()
+    if (Test-Path -LiteralPath (Join-Path $ws '.git')) { $projects += $ws }
     try {
         foreach ($d in @(Get-ChildItem -LiteralPath $ws -Directory -Force -ErrorAction SilentlyContinue)) {
             if (Test-Path -LiteralPath (Join-Path $d.FullName '.git')) { $projects += $d.FullName }
         }
-    } catch { $projects = @() }
+    } catch { }
     if ($projects.Count -eq 0) { exit 0 }
 
-    # git must be usable (functional probe, judged by exit code).
-    $null = & git -C $projects[0] rev-parse --git-dir 2>$null
-    if ($LASTEXITCODE -ne 0) {
-        [Console]::Error.WriteLine("编号守卫未运行：编排项目存在但 git 不可用。本轮未检查编号撞车。")
+    # Probe FUNCTIONALLY and BY EXIT CODE (never by the truthiness of output):
+    # `Get-Command git` only proves the name RESOLVES, and a zero-byte git.exe on
+    # PATH passes it then fails at call time. `Invoke-GitChecked` leaves `.Exit`
+    # $null when git cannot be launched, and `$null -eq 0` is false, so both
+    # failure shapes land on this branch.
+    if ((Invoke-GitChecked { git --version 2>$null }).Exit -ne 0) {
+        Write-Notice "PATH 上的 git 不可用（缺失或无法执行）。"
+        exit 1
+    }
+
+    # NEGATIVE CANARY (the dual of the probe above). The probe demands "this MUST
+    # SUCCEED"; the canary demands "this MUST FAIL". Together they force the binary
+    # to return DIFFERENT exit codes for two different inputs, which is what makes
+    # the exit code trustworthy rather than merely assumed: a shim that always
+    # exits 0 passes the probe and is caught here; a shim that always exits
+    # non-zero is caught by the probe. The input is an all-zero object id, which
+    # names no object in any repo, so `--verify` must fail.
+    if ((Invoke-GitChecked { git rev-parse --verify --quiet "0000000000000000000000000000000000000000^{commit}" 2>$null }).Exit -eq 0) {
+        Write-Notice "PATH 上的 git 退出码不可信（对必定失败的输入仍返回 0）。"
         exit 1
     }
 
     $collisions = New-Object System.Collections.Generic.List[string]
     foreach ($proj in $projects) {
-        $refs = @(& git -C $proj for-each-ref --format='%(refname)' refs/heads refs/remotes 2>$null)
+        $probe = Invoke-GitChecked { git -C $proj rev-parse --git-dir 2>$null }
+        if ($probe.Exit -ne 0) {
+            Write-Notice ("候选仓库不可用（" + (Split-Path -Leaf $proj) + "）。")
+            exit 1
+        }
+
+        $refsCall = Invoke-GitChecked { git -C $proj for-each-ref --format='%(refname)' refs/heads refs/remotes 2>$null }
+        if ($refsCall.Exit -ne 0) {
+            Write-Notice ("无法枚举分支（" + (Split-Path -Leaf $proj) + "）。")
+            exit 1
+        }
+        $refs = @($refsCall.Text -split "`n" | Where-Object { $_ -ne '' })
         if ($refs.Count -eq 0) { continue }
 
         # Union the CURRENT docs/changes/ listing of every branch (not history:
         # `git log --all --name-only` would include pre-rename names and false-positive).
-        $byNum = @{}
+        #
+        # CRITERION: a number is a collision when it names MORE THAN ONE DISTINCT
+        # (path, blob oid) pair. That is the header's ">=2 DISTINCT files" read
+        # literally, and it is deliberately wider than ">=2 distinct leaf names":
+        #   - two branches each evolving their own `NNN-fix.md` (same path, different
+        #     oid) is an add/add conflict at merge time -> a collision (human ruling,
+        #     ledger GAP-019);
+        #   - two paths that merely share content are still two distinct files;
+        #   - the SAME (path, oid) seen on several branches is one file -> not a
+        #     collision.
+        #
+        # The container is CASE-SENSITIVE (Ordinal), not PowerShell's literal `@{}`.
+        # `@{}` compares keys case-INSENSITIVELY, so `NNN-Alpha.md` and `NNN-alpha.md`
+        # collapsed into ONE key and a real cross-branch collision read as clear
+        # (measured, pre-existing). Pinning the comparer keeps the two distinct.
+        #
+        # `-z` gives NUL-separated records with unquoted paths, so a path containing
+        # spaces or quotes cannot silently break the parse.
+        $byNum = New-Object 'System.Collections.Generic.Dictionary[string, System.Collections.Generic.HashSet[string]]'
         foreach ($r in $refs) {
-            $files = @(& git -C $proj ls-tree -r --name-only $r -- docs/changes/ 2>$null)
-            foreach ($f in $files) {
-                $leaf = [System.IO.Path]::GetFileName($f)
-                if ($leaf -match '^(\d{3})-') {
-                    $num = $Matches[1]
-                    if (-not $byNum.ContainsKey($num)) { $byNum[$num] = @{} }
-                    $byNum[$num][$leaf] = $true
+            $tree = Invoke-GitChecked { git -C $proj ls-tree -r -z $r -- docs/changes/ 2>$null }
+            if ($tree.Exit -ne 0) {
+                Write-Notice ("无法列出分支树（" + (Split-Path -Leaf $proj) + " / " + $r + "）。")
+                exit 1
+            }
+            foreach ($rec in @($tree.Text -split "`0" | Where-Object { $_ -ne '' })) {
+                # <mode> SP <type> SP <oid> TAB <path>
+                if ($rec -match '^\S+\s+\S+\s+(?<oid>[0-9a-f]+)\t(?<path>.+)$') {
+                    $oid = $Matches['oid']
+                    $relPath = $Matches['path']
+                    # The NUMBER is taken from the leaf; the IDENTITY is the FULL path.
+                    # Keying identity by the leaf alone would merge `NNN-a.md` with
+                    # `old/NNN-a.md` — two distinct files under one number (measured).
+                    $leaf = [System.IO.Path]::GetFileName($relPath)
+                    if ($leaf -match '^(\d{3})-') {
+                        $num = $Matches[1]
+                        if (-not $byNum.ContainsKey($num)) {
+                            $byNum[$num] = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+                        }
+                        # `$null =` is load-bearing: HashSet.Add returns bool, and a
+                        # bare call would print `True` to stdout on every new entry,
+                        # breaking the "exit 0 with no output" contract.
+                        $null = $byNum[$num].Add($relPath + '@' + $oid)
+                    }
                 }
             }
         }
 
         $name = Split-Path -Leaf $proj
-        foreach ($num in ($byNum.Keys | Sort-Object)) {
-            $leaves = @($byNum[$num].Keys | Sort-Object)
-            if ($leaves.Count -gt 1) {
-                $collisions.Add("  [$name] $num : " + ($leaves -join '  |  '))
+        foreach ($num in @($byNum.Keys | Sort-Object)) {
+            $seen = @($byNum[$num] | Sort-Object)
+            if ($seen.Count -gt 1) {
+                # Show the short oid so a reader can see WHY it counts as two files.
+                $shown = @($seen | ForEach-Object { $p = $_ -split '@'; $p[0] + ' (' + $p[1].Substring(0, 7) + ')' })
+                $collisions.Add("  [$name] $num : " + ($shown -join '  |  '))
             }
         }
     }
@@ -91,6 +191,19 @@ try {
     exit 1
 }
 catch {
-    # Never let the guard itself break a turn.
-    exit 0
+    # A guard that dies silently is indistinguishable from a guard that is happy
+    # (GAP-015's whole family). Report instead: `exit 1` is the documented
+    # NON-blocking notice channel, so this informs without breaking the turn.
+    #
+    # Carry the EXCEPTION TEXT, not just a fixed phrase: a bare "the guard itself
+    # errored" reads identically to "git unusable" / "exit code untrustworthy" /
+    # "candidate repo unusable" / "cannot enumerate refs" / "cannot list branch
+    # tree" — five different causes, one indistinguishable message (measured).
+    # Keep it to the first line so the notice stays a notice.
+    $why = ''
+    if ($null -ne $_.Exception -and $null -ne $_.Exception.Message) { $why = $_.Exception.Message }
+    $line = ''
+    if ($null -ne $_.InvocationInfo -and $null -ne $_.InvocationInfo.ScriptLineNumber) { $line = ' @' + $_.InvocationInfo.ScriptLineNumber }
+    Write-Notice ("守卫自身出错" + $line + "：" + $why)
+    exit 1
 }
