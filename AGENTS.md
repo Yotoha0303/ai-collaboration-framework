@@ -469,15 +469,18 @@ gh pr create --repo <作者仓库> --base main --head <you>:<branch>   # PR 开�
 
 **正确口径**：
 
-- 选号时查**全部分支的并集**，不是 HEAD：
-  `git log --all --name-only --pretty=format: -- "$REPO/docs/changes/" | grep -oE '[0-9]{3}' | sort -un | tail -1`
-  （GAP 同理：`git log --all -p -- "$REPO/docs/GAP台账.md" | grep -oE 'GAP-[0-9]+' | sort -un | tail -1`）。
+- 选号时查**全部分支的并集**，不是 HEAD。**用 `git ls-tree` 逐 ref 列树**（`git ls-tree -r --name-only <ref> -- "$REPO/docs/changes/"`），
+  对每个 `refs/heads` + `refs/remotes` 都跑一遍。
+- ⚠️ **不要用 `git log --all --name-only`**——它**默认简化 merge**，**由 merge 提交引入的文件不会出现**，
+  于是并集**少算**、取到一个**已被占用**的号。这是框架落地实测踩到的坑：`038-*` 正是这样被漏掉、导致选了已占号。
+  要用 log 就必须加 `-m`；但**更稳的是 `ls-tree`**（直接列树的当前内容，与 merge 简化无关）。
 - **并行分支上作业时**，选号要高看一步：**在你落笔与合并之间，别的分支还会占用号**。
   本项目实测「两次顺延都撞在同一轮」——**问题不在某一号选得不好，在选号的方法不成立**。
 - **记住这条缺陷的形态**：它**不会响**——守卫绿着，号却撞了，合入时才炸。
   与 §8 的「工具名被静默丢弃」同族：**判据写错，一如此例，永远不会自己报警**。
 - **兜底**：合并前对**编号类文件**做一次冲突预检（`git merge-tree`，见 §5 推送前必做 3）；
   编号撞车在 `merge-tree` 里**会显形为冲突**——那是唯一会替你报警的地方。
+  （**机械实现**：`.claude/hooks/check-numbers.ps1` Stop hook 已按此口径逐 ref `ls-tree` 并集检查，撞车即报。）
 
 ---
 
