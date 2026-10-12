@@ -205,6 +205,10 @@ launchers/
 docs/
   ledger.md                      The **only** ledger of open items (GAP/INC/DEFER).
                                  **Anything "not yet done" that is not in the ledger does not exist**
+  ledger-evidence/               The ledger's **evidence appendices** (A–D: pre-registration
+                                 searches / evidence transcripts / verification commands / guard
+                                 measurements). **Not read by default — open on demand**; the
+                                 ledger body points here only when something needs re-checking
 ```
 > ⚠️ **Layouts differ, and this repo is "self-hosted"**: the repo is the directory that
 > **contains `.git`** (any name). The table above is annotated for the **target layout**
