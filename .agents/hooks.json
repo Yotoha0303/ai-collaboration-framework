@@ -1,0 +1,22 @@
+{
+  "agents-md-tail-autoload": {
+    "enabled": true,
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"./hooks/inject-agents-tail.ps1\"",
+        "timeout": 15
+      }
+    ]
+  },
+  "claude-stop-guards": {
+    "enabled": true,
+    "Stop": [
+      {
+        "type": "command",
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"./hooks/stop-adapter.ps1\"",
+        "timeout": 30
+      }
+    ]
+  }
+}
