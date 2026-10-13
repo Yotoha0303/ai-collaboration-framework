@@ -273,7 +273,8 @@ flowchart LR
 ```
 AGENTS.md                        唯一约束源。四大纪律 / 门禁矩阵 / 五段协议 / 角色层定义
 AGENTS.en.md                     同上，英文版（同一规则源的语言投影）
-CLAUDE.md                        瘦入口。只做三件事：导入 AGENTS.md + 声明身份 + 启动自检
+CLAUDE.md                        Claude Code 瘦入口：@导入 AGENTS.md + 声明身份 + 启动自检
+GEMINI.md                        Antigravity 瘦入口：@[label](path) 预加载 + 声明身份 + 启动自检
 README.en.md                     README 英文版
 LICENSE                          MIT
 
@@ -284,12 +285,17 @@ prompts/
   AI协同工程架构.png              拓扑图（**较早的扇出视角**；实时拓扑见 §三）
 
 .claude/
-  settings.json                  Stop hook 配置
+  settings.json                  Claude Code Stop hook 配置
   hooks/check-progress.ps1       进度页滞后守卫（fail-closed，见 §九）
   hooks/check-numbers.ps1        编号跨分支撞车守卫（见 §九）
   hooks/README.md                守卫实现细节（按需读）
   progress-page.txt              一行。进度页文件名的唯一事实源
   agents/*.md                    已实例化的角色（**12 类业务角色 + 3 类纪律执行者**）
+
+.agents/
+  hooks.json                     Antigravity 生命周期钩子配置（PreInvocation + Stop）
+  hooks/inject-agents-tail.ps1   AGENTS.md 超 24KB 动态多片续载器（零侵入原文件，预留无限增长）
+  hooks/stop-adapter.ps1         Stop 守卫协议转接器（零侵入复用 .claude/hooks/*.ps1）
 
 launchers/
   start_claude.bat / start_claude.sh   启动器：锁定工作目录（见 §十）
@@ -387,6 +393,17 @@ Claude Code 的三条查找路径——`AGENTS.md` / `.claude/agents/` / `settin
 > 曾经靠 `.gitignore` 挡过一次，**漏了**——被漏掉的是**叙述**（一份变更记录里
 > "附：AI 协同框架"一节描述了框架本身），而不是文件。**忽略规则挡得住文件，挡不住叙述。**
 
+### 双运行时自动调用与无侵入适配（Claude Code · Antigravity）
+
+本框架支持 **Claude Code** 与 **Antigravity** 双端开箱即用。两套工具的底层机制不同，但通过 [`GEMINI.md`](GEMINI.md) 与 [`.agents/hooks.json`](.agents/hooks.json) 实现了**零侵入原有文件、100% 机械对齐**：
+
+| 能力维度 | Claude Code 原生机制 | Antigravity 自动适配机制 |
+| --- | --- | --- |
+| **总控瘦入口** | `CLAUDE.md`（`@path` 展开导入） | `GEMINI.md`（`user_rules` 自动加载 + `@[label](path)` 工具层展开 `prompts/` 双文件） |
+| **`AGENTS.md` 全量加载（突破 24KB 限制）** | `@AGENTS.md` 一次性全量展开 | 前 24KB 由 `user_rules` 自动加载；超出 24KB 的后半段由 `.agents/hooks.json` 的 **`PreInvocation`** 钩子（`inject-agents-tail.ps1`）从 23,000 字节处按 `≤24KB` **自动多片续载**（预留未来无限扩容，不改 `AGENTS.md` 原件） |
+| **Stop 门禁守卫（进度页 + 编号撞车）** | `.claude/settings.json` 直接调用 `.claude/hooks/*.ps1`（`decision:block`） | `.agents/hooks.json` 的 **`Stop`** 钩子通过 `stop-adapter.ps1` **零侵入调用同一套 `.claude/hooks/*.ps1`**，将 `decision:block` 自动映射为 `decision:continue` 拦截回合结束 |
+| **角色层与机械只读权限** | `.claude/agents/*.md` 自动挂载；只读角色 `tools: Read, Grep, Glob` | 调用 `define_subagent` 读取 `.claude/agents/<role>.md` 原文作为 `system_prompt`；只读角色（`falsifier` / `gate-auditor`）强制设 `enable_write_tools: false` 物理剥夺 shell 与写权限 |
+
 ---
 
 ## 十一、这套框架是怎么长出来的
@@ -420,8 +437,9 @@ Claude Code 的三条查找路径——`AGENTS.md` / `.claude/agents/` / `settin
 
 ## 十二、怎么用
 
-1. **从工作区根启动**：跑 `launchers/start_claude.bat`（Windows）或 `launchers/start_claude.sh`（Linux/macOS）。
-   **必须**这样启动——三条查找路径**只向上扫**，从别处启动框架会**静默不存在**（见 §十）。
+1. **从工作区根启动**：
+   - **Claude Code**：跑 `launchers/start_claude.bat`（Windows）或 `launchers/start_claude.sh`（Linux/macOS）——三条查找路径**只向上扫**，从别处启动框架会**静默不存在**（见 §十）。
+   - **Antigravity**：直接用 Antigravity 打开工作区根目录（或从工作区根运行 `agy`）——系统会自动发现并加载 `GEMINI.md`、`AGENTS.md` 与 `.agents/hooks.json`。
 2. **说你的事**：一句话交代任务即可。**总控**负责定位（生命周期 × 系统层级）、选角色、派活、汇总、裁决——**你不需要知道有哪些角色**。
 3. **你做裁定**：架构变更、角色实例化、**外发/推送**这几类，总控会**停下来问你**；其余它自己推进。
 

@@ -1,5 +1,7 @@
 # AI Collaboration Engineering Framework
 
+[![Runtime: Claude Code](https://img.shields.io/badge/Runtime-Claude_Code-blue)](./CLAUDE.md)
+[![Runtime: Antigravity](https://img.shields.io/badge/Runtime-Antigravity-orange)](./GEMINI.md)
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Status: Experimental](https://img.shields.io/badge/status-experimental-orange.svg)
 ![Runtime: Claude Code](https://img.shields.io/badge/runtime-Claude%20Code-8A2BE2.svg)
@@ -281,7 +283,8 @@ repo HEAD (mechanism in §9).
 AGENTS.md                        The single source of constraints. Disciplines / gate matrix /
                                  five-segment protocol / role-layer definition
 AGENTS.en.md                     The same, in English (a language projection of one source of rules)
-CLAUDE.md                        Thin entry point: import AGENTS.md + declare identity + self-check
+CLAUDE.md                        Claude Code thin entry point: import AGENTS.md + declare identity + self-check
+GEMINI.md                        Antigravity thin entry point: @[label](path) pre-loading + identity + self-check
 README.en.md                     This file
 LICENSE                          MIT
 
@@ -293,12 +296,17 @@ prompts/
                                  topology see §3)
 
 .claude/
-  settings.json                  Stop hook config
+  settings.json                  Claude Code Stop hook config
   hooks/check-progress.ps1       Progress-page staleness guard (fail-closed, see §9)
   hooks/check-numbers.ps1        Cross-branch identifier-collision guard (see §9)
   hooks/README.md                Guard implementation detail (read on demand)
   progress-page.txt              One line: the single source of truth for the page filename
   agents/*.md                    Instantiated roles (**12 business roles + 3 discipline enforcers**)
+
+.agents/
+  hooks.json                     Antigravity lifecycle hooks config (PreInvocation + Stop)
+  hooks/inject-agents-tail.ps1   AGENTS.md >24KB dynamic multi-chunk loader (zero-intrusion, future-proof)
+  hooks/stop-adapter.ps1         Stop guard protocol adapter (reuses .claude/hooks/*.ps1 directly)
 
 launchers/
   start_claude.bat / .sh         Launchers: lock the working directory
@@ -408,6 +416,17 @@ Therefore:
 > through was **prose** (a change record containing an "Appendix: AI collaboration framework"
 > section describing the framework itself), not a file.
 > **Ignore rules can hold back files; they cannot hold back prose.**
+
+### Dual-Runtime Auto-Invocation & Zero-Intrusion Adaptation (Claude Code · Antigravity)
+
+This framework works out of the box on both **Claude Code** and **Antigravity**. Via [`GEMINI.md`](GEMINI.md) and [`.agents/hooks.json`](.agents/hooks.json), Antigravity achieves **100% mechanical parity with zero modification to existing files**:
+
+| Dimension | Claude Code Native Mechanism | Antigravity Auto-Adaptation Mechanism |
+| --- | --- | --- |
+| **Thin Entry Point** | `CLAUDE.md` (`@path` inline expansion) | `GEMINI.md` (`user_rules` auto-load + `@[label](path)` tool-layer expansion of `prompts/*`) |
+| **Full `AGENTS.md` Loading (>24KB cap)** | `@AGENTS.md` single-pass expansion | First 24KB auto-loaded by `user_rules`; remaining bytes beyond 23,000 dynamically sliced into `≤24KB` chunks by `.agents/hooks.json` **`PreInvocation`** (`inject-agents-tail.ps1`, future-proof for arbitrary growth) |
+| **Stop Guards (Progress Page + ID Collisions)** | `.claude/settings.json` invokes `.claude/hooks/*.ps1` (`decision:block`) | `.agents/hooks.json` **`Stop`** hook runs `stop-adapter.ps1`, invoking the exact same `.claude/hooks/*.ps1` and mapping `decision:block` → `decision:continue` |
+| **Subagent Layer & Read-Only Enforcement** | `.claude/agents/*.md` auto-mounted; read-only via `tools: Read, Grep, Glob` | `define_subagent` with `.claude/agents/<role>.md` as `system_prompt`; read-only roles (`falsifier` / `gate-auditor`) set `enable_write_tools: false` to strip shell & write tools |
 
 ---
 
