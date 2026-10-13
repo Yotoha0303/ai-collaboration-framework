@@ -5,10 +5,10 @@
 
 | 项 | 值 |
 | --- | --- |
-| 台账快照时间（UTC） | `2026-10-12T14:06:41Z`（实测 `(Get-Date).ToUniversalTime()`；前次=`2026-10-12T11:18:54Z`） |
-| 快照时 HEAD | `022a24e`（前次=`c66895d`；本轮含 **PR #3 合并**、**生产提取与修复**、**编号守卫修复与独立复核**、**双语结构补齐**） |
-| 快照时入库文件数 | `45`（`git ls-files` 行数实测；前次=`43`） |
-| 已用 `GAP-` 最大号 | `GAP-022`（前次=`GAP-021`；**本轮新增 `017`…`022`**——`020`/`021`/`022` 已解除；`GAP-016` 仍为 `已撤销（误登记）`，编号不复用） |
+| 台账快照时间（UTC） | `2026-10-13T05:46:12Z`（实测 `(Get-Date).ToUniversalTime()`；前次=`2026-10-12T14:06:41Z`） |
+| 快照时 HEAD | `974435c`（前次=`022a24e`；本轮新增 **Antigravity 双运行时零侵入适配层**、**双运行时徽章与 README §十/§十二 更新**、**适配过程与三处踩坑登记 `GAP-023`**） |
+| 快照时入库文件数 | `49`（`git ls-files` 行数实测；前次=`45`；本轮新增 `GEMINI.md` 与 `.agents/` 3 文件 = 49） |
+| 已用 `GAP-` 最大号 | `GAP-023`（前次=`GAP-022`；**本轮新增 `023`（Antigravity 跨运行时适配的三重静默/死锁缺口）并当场实测解除**；`GAP-016` 仍为 `已撤销（误登记）`，编号不复用） |
 | 已用 `DEFER-` 最大号 | `DEFER-011`（前次=`DEFER-006`；**本轮新增 `006`，撤销 `002`/`003`/`005`，并新开 `007`…`011` 五条「待人工裁定」**，见下方 `待裁定` 表） |
 | 已用 `INC-` | 无（`0`） |
 | 页名指针快照 | `.claude/progress-page.txt` → `project-progress.html`，字节 `112,…,108,10`，SHA256 `BF4B6899…B2ADE1` |
@@ -48,6 +48,7 @@
 | **`GAP-020`** | **"git 不可用"这条判据是<u>有条件的</u>**——`check-numbers.ps1` 的「0 候选即 `exit 0`」**先于**功能探针 ⇒ **无候选仓时，git 不可用被整个吞掉**，读数与"**查过且干净**"**同形**。**同号附注第二半**：候选枚举处的 `-ErrorAction SilentlyContinue` + **空 `catch { }`** 把「**枚举失败**」也塌进"0 候选" ⇒ **枚举失败 → 0 候选 → 与干净同形** | **四格并列（先正控）**：`withcand`（有候选+git 正常）→ `exit=1` 报撞车（**正控：守卫有牙**）· `nocand`（0 候选+git 正常）→ `exit=0` 静默（声明过的"尚未初始化"）· `cand-nogit`（有候选+git 不可用）→ `exit=1`「不可用」· **`nocand-nogit`（0 候选+git 不可用）→ `exit=0` 静默** ← 本条要证的那格。**代码引用**：`check-numbers.ps1` 的 0 候选退出**先于**探针 ⇒ 该静默**由语句顺序决定**，与 git 是否可用无关 | **把 0 候选判定挪到探针之后**（或让枚举失败**可见**）——**两者都做更好**。改后按 D3 **须由只读方设计负向用例、总控代跑** | `已解除`（**本轮已修**；两格解除条件实测满足 + 枚举失败负向用例实测通过，见下留痕） |
 | **`GAP-021`** | **`GAP-020` 修复新引入的 `catch` 分支未做负向验证**——它把「枚举失败」从"塌进 0 候选"改成"可见"，**但那条新判据当时只有代码、没有用例**。**这正是 D3 明令的那一族**（"编写门禁判据必须同时提供负向用例"），也是本项目自己登记过的形态（"规则有了、机械检查没有"）。**只读方指出："未跑本身就是事实，不必等跑完再登记"** | **机制探针**（`icacls <dir> /deny <user>:(RD)` 后）：`-ErrorAction Stop` → **`STOP-THREW: UnauthorizedAccessException`**（⇒ 该分支**可达、非死代码**）；`-ErrorAction SilentlyContinue` → **`count=0`**（⇒ **根因**也实测成立）。**集成格**：同一注入下跑整守卫 → **`exit=1` + stderr「无法枚举工作区目录（枚举失败 ≠ 没有候选仓）。本轮未检查编号撞车。」**（**实测 `2026-10-12`**） | 已完成——**负向用例已跑通且分支可达**；故本条**登记即为闭合证据**，非"待办" | `已解除`（**本轮登记并当场实测**） |
 | **`GAP-022`** | **中英两版结构无机械判据** ⇒ **实测英文版缺两条规则**：`AGENTS.en.md` **没有 `§4.2 生命周期推进` 的正文**（只有 6 处指向它的引用——**指向一个英文里不存在的节**），且**整节缺 `§6.1 编号空间跨分支守卫`**。`README`/`AGENTS` 声明「英文是**同一规则源的语言投影**」（D4），而**投影里少了两条规则**——读者若只读英文，**会以为框架没有这两条**。**这是 `GAP-017` 同族风险的实例化**（"规则有了、机械检查没有"，且**这次真的漏了**） | **章节枚举对照**（`Select-String '^#{2,3} '`）：中文 **30 节** / 英文 **28 节**；逐节层级比对在 §4.2 处开始错位。**实质内容检索**：英文版 `§6.1` 相关关键词（`6\.1` / `cross-branch` / `ls-tree`）**命中 0**；`§4.2` **只有引用、无定义**（`## 5.` 紧跟 `### 4.1` 之后） | **补齐英文两节**（逐节对译），并把**章节数 + 逐节层级**作为可复跑的核对命令写进 `docs/delivery-gates.md`；**长期**需机械判据（归 `GAP-017` 同族） | `已解除`（**本轮补齐并实测 30=30**） |
+| **`GAP-023`** | **Antigravity 跨运行时适配的三重静默/死锁缺口**：① `user_rules` 单文件 `24,000` 字节硬上限将 `AGENTS.md`（45.7 KB）在 `§4.1` 末尾**静默截断**（`§4.2`–`§9` 整段消失，零报错）；② 后台钩子子进程中 `[Console]::IsInputRedirected` 恒为 `$true` 且无 EOF，调用 `[Console]::In.ReadToEnd()` **永久阻塞挂死**；③ 初版 `stop-adapter.ps1` 将 `.claude/hooks/*.ps1` 的 `exit 1 + stderr`（非阻断提示）与 `stdout` `decision:block`（真阻断）混同映射为 `decision:"continue"`，在存在远端历史分支编号撞车时**每轮永久死锁** | ① `user_rules` 实测出现 `<truncated 23909 bytes>` + `agy-customizations/docs/rules.md` 单文件 `24,000 B` 上限；② 初版钩子实跑挂死（`task-124` 超时强杀）；③ 带项目工作区实跑 `stop-adapter.ps1` 初版把远端 `023` 提示转成 `decision:"continue"` 拦截；修复后正/负向四格全通（见下留痕） | ① `GEMINI.md` 经 `@[label](path)` 展开 `prompts/AI总控.md` + `prompts/角色契约.md`（合计 22.9 KB < 24 KB），`.agents/hooks/inject-agents-tail.ps1` 从第 `23,000` 字节起（留 1KB 重叠区）按 `≤ 24,000` 字节动态多段切分经 `ephemeralMessage` 续载 `AGENTS.md` 后半段；② 移除钩子阻塞式 `stdin` 读取；③ `stop-adapter.ps1` 严格分离 `stdout` `decision:block`（转 `continue`）与 `exit 1 + stderr`（透传 stderr + `allow`） | `已解除`（**本轮实测通过**） |
 
 **`DEFER-` 登记表**（四列：编号 / 内容 / 理由 / 状态）——**`DEFER-` 是「有理由的主动延期」**（`AGENTS.md` §6），与 `GAP-`（**该做而未做**的缺口）**不同**，故**另起一表、不混入上表**；**理由一栏如实记录，未给理由就写"未给理由"，不得代为补写**。**按编号升序，编号不复用、不重号。** 登记前检索见**附录 A.7**。
 
@@ -308,6 +309,31 @@
 > **本段已被后续修复取代（补记，不删）**：`GAP-008` / `GAP-009` **均已改判为 `修复待独立放行`**（见上「修复留痕」）。**`GAP-008` 不再是"已知边界"**——上述「正常写作流程不会产生它」的论证**只说明它不是回归，不说明不可修**，本轮已修。**`GAP-009` 的"当前不可达"亦不再成立**：新增的沙箱实测（`ws/.git` 为**悬空 gitfile**，`project/` 为真仓）使该候选路径**可达**，旧判据实测**静默**、新判据**BLOCK**——即**洞可达、已修、待独立放行**。
 
 **`GAP-009` 解除留痕（一行，`2026-10-09T16:31:03Z`）**：**沙箱独立放行**——本仓 `$ws` 恒有效且 `Select-Object -First 1` 使 `project/` 侧**连谓词都不求值** ⇒ **新旧判据在本仓逐字节相同**（无输入能使二者分叉），故放行**只能**在沙箱完成；沙箱结果：判别例1（空目录）/ 例2（悬空 gitfile）**新码 BLOCK**、**旧码 `c0d828e` 同布局静默**、反向对照（无 `.git`）**旧码 BLOCK** ⇒ 洞可达、新码有牙（附录 D.10）。**原条目文字不删**（证据链）。
+
+**`GAP-023` 适配过程、三处实测踩坑与最终调整留痕（`2026-10-13`；零侵入双运行时桥接）**：
+
+- **背景与硬边界**：用户要求在「Antigravity `user_rules` 单文件加载上限为 `24,000` 字节」的前提下，将 Antigravity 引入本框架、保持与 Claude Code 对等的自动加载与机械守卫能力，且**严禁侵入或拆分现有规则源/守卫脚本**（`AGENTS.md` / `CLAUDE.md` / `.claude/hooks/*.ps1` / `.claude/agents/*.md` 保持 0 字节改动，D4 单一事实源）。
+- **初判误诊与纠正（D1 读到才算）**：
+  - 最初未读内置技能文档时，曾误判 Antigravity 不支持 `@path` 内联展开与 `Stop` 钩子。
+  - 实读 `agy-customizations` 的 `docs/rules.md` 与 `docs/hooks.md` 后确认：① 根级 `GEMINI.md` 原生支持 `@[label](path)` 工具层内联展开（单文件展开后上限 `24,000` 字节，总 `always_on` 预算 `20,000` tokens）；② `.agents/hooks.json` 原生支持 `PreInvocation`（注入 `ephemeralMessage`）与 `Stop`（返回 `{"decision":"allow"|"continue"}`）生命周期钩子。
+- **实测踩到的三处真坑与最终调整**：
+  1. **坑 ①：`AGENTS.md` 单文件 24KB 静默截断（后半段 `§4.2–§9` 凭空消失）**
+     - **现象**：`AGENTS.md` 实测 `45,660` 字节（承载工作区版 `47,909` 字节），被 `user_rules` 在第 `24,000` 字节处（`§4.1` 末尾）静默截断为 `<truncated 23909 bytes>`，`§4.2`（三跳链）、`§5`（运行态与进度页同步）、`§6`（唯一台账与编号守卫）整段丢失且无报错。
+     - **调整**：
+       - 新建瘦入口 `GEMINI.md`（与 `CLAUDE.md` 对等），用 `@[AI总控](prompts/AI总控.md)` + `@[角色契约](prompts/角色契约.md)` 展开两份提示词（展开后共约 `22.9 KB < 24 KB`，零截断）。
+       - 新建 `.agents/hooks/inject-agents-tail.ps1`（挂载于 `PreInvocation`）：直接读取 `AGENTS.md` 的 UTF-8 字节流，从第 `23,000` 字节起（在 `24,000` 截断点前预留 **1,000 字节安全重叠区**，确保标题行不被劈断）按 **`≤ 24,000` 字节/片** 动态多段切分，组装为 `{"injectSteps":[{"ephemeralMessage":"..."}]}` 注入——既零侵入保持 `AGENTS.md` 唯一事实源，又为未来 `AGENTS.md` 扩充至 70KB/100KB+ 预留无限分片能力。
+  2. **坑 ②：后台钩子 `[Console]::IsInputRedirected` 恒真导致 `ReadToEnd()` 永久死锁**
+     - **现象**：初版钩子脚本写了 `if ([Console]::IsInputRedirected) { $null = [Console]::In.ReadToEnd() }` 以消费标准输入。实跑验证时子进程挂死（`task-124` 超时被强杀）。
+     - **根因**：非交互式 PowerShell 子进程中 `[Console]::IsInputRedirected` 恒为 `$true`；当调用方未关闭 stdin 管道（无 EOF）时，`ReadToEnd()` 无限阻塞等待。
+     - **调整**：两个钩子均无需读取 `stdin` JSON 载荷，彻底移除阻塞式 `stdin` 读取，实跑耗时降至 `<100ms`。
+  3. **坑 ③：桥接层混淆「非阻断提示（`exit 1 + stderr`）」与「真阻断（`decision:block`）」引发跨分支撞车死锁**
+     - **现象**：初版 `.agents/hooks/stop-adapter.ps1` 将子守卫的 `stdout` `decision:block` 与 `exit 1 + stderr` **一刀切映射为 `{"decision":"continue"}`**。在带业务项目的工作区实跑时，`.claude/hooks/check-numbers.ps1` 扫到远端历史分支存在同名编号 `023` 并输出 `exit 1 + stderr`（原守卫刻意设计为**非阻断提示**，因为当前会话无权改写远端历史分支），结果被初版桥接层转成 `decision:"continue"` 强阻断——若不修，每轮对话结束都会被远端历史分支永久死锁。
+     - **调整**：`stop-adapter.ps1` 严格对齐原守卫语义——仅当子守卫 `stdout` 产出 `{"decision":"block"}`（如 `project-progress.html` 的 `HEAD` 落后于仓库 `HEAD`）时映射为 Antigravity 的 `{"decision":"continue","reason":"..."}` 拦截回合；当子守卫返回 `exit 1 + stderr` 时，将消息原样透传至 `[Console]::Error` 并返回 `{"decision":"allow"}`。
+- **四格正/负向实测（本仓实跑）**：
+  - `PreInvocation` 分片注入：`$utf8.GetByteCount($raw) = 45660 > 24000` → `exit=0`，`chunks=1, len=22802`（完整覆盖 `§4.2–§9`）；
+  - `Stop` 正向（`project-progress.html` 的 `head` == 仓库 `HEAD`）：`stop-adapter.ps1` → `{"decision":"allow"}`（`exit=0`）；
+  - `Stop` 负向（篡改 `project-progress.html` 的 `head` 为 `0000000`）：`stop-adapter.ps1` → `{"decision":"continue","reason":"进度页 project-progress.html 的 head 是 0000000，仓库当前是 ..."}`（**成功拦截**，测试后已还原）；
+  - `Stop` 非阻断提示（`check-numbers.ps1` 遇跨分支撞车 `exit 1 + stderr`）：透传 `stderr` 首行提示 + `stdout` 返回 `{"decision":"allow"}`（**不死锁**）。
 
 ---
 
