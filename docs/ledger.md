@@ -5,10 +5,10 @@
 
 | 项 | 值 |
 | --- | --- |
-| 台账快照时间（UTC） | `2026-10-13T05:46:12Z`（实测 `(Get-Date).ToUniversalTime()`；前次=`2026-10-12T14:06:41Z`） |
-| 快照时 HEAD | `974435c`（前次=`022a24e`；本轮新增 **Antigravity 双运行时零侵入适配层**、**双运行时徽章与 README §十/§十二 更新**、**适配过程与三处踩坑登记 `GAP-023`**） |
-| 快照时入库文件数 | `49`（`git ls-files` 行数实测；前次=`45`；本轮新增 `GEMINI.md` 与 `.agents/` 3 文件 = 49） |
-| 已用 `GAP-` 最大号 | `GAP-023`（前次=`GAP-022`；**本轮新增 `023`（Antigravity 跨运行时适配的三重静默/死锁缺口）并当场实测解除**；`GAP-016` 仍为 `已撤销（误登记）`，编号不复用） |
+| 台账快照时间（UTC） | `2026-10-13T05:52:21Z`（实测 `(Get-Date).ToUniversalTime()`；前次=`2026-10-13T05:46:12Z`） |
+| 快照时 HEAD | `d419180`（前次=`974435c`；本轮新增 **架构成熟度与四类已知系统性问题分析 `docs/known-issues.md`** 及 **`GAP-024`..`GAP-026` 登记**） |
+| 快照时入库文件数 | `50`（`git ls-files` 行数实测；前次=`49`；新增 `docs/known-issues.md` = 50） |
+| 已用 `GAP-` 最大号 | `GAP-026`（前次=`GAP-023`；**本轮新增 `024`/`025`/`026`（物理咬合力早期 / 脚本胶水脆弱性 / 双运行时机械一致性验证复杂度）**；`GAP-016` 仍为 `已撤销（误登记）`，编号不复用） |
 | 已用 `DEFER-` 最大号 | `DEFER-011`（前次=`DEFER-006`；**本轮新增 `006`，撤销 `002`/`003`/`005`，并新开 `007`…`011` 五条「待人工裁定」**，见下方 `待裁定` 表） |
 | 已用 `INC-` | 无（`0`） |
 | 页名指针快照 | `.claude/progress-page.txt` → `project-progress.html`，字节 `112,…,108,10`，SHA256 `BF4B6899…B2ADE1` |
@@ -49,6 +49,9 @@
 | **`GAP-021`** | **`GAP-020` 修复新引入的 `catch` 分支未做负向验证**——它把「枚举失败」从"塌进 0 候选"改成"可见"，**但那条新判据当时只有代码、没有用例**。**这正是 D3 明令的那一族**（"编写门禁判据必须同时提供负向用例"），也是本项目自己登记过的形态（"规则有了、机械检查没有"）。**只读方指出："未跑本身就是事实，不必等跑完再登记"** | **机制探针**（`icacls <dir> /deny <user>:(RD)` 后）：`-ErrorAction Stop` → **`STOP-THREW: UnauthorizedAccessException`**（⇒ 该分支**可达、非死代码**）；`-ErrorAction SilentlyContinue` → **`count=0`**（⇒ **根因**也实测成立）。**集成格**：同一注入下跑整守卫 → **`exit=1` + stderr「无法枚举工作区目录（枚举失败 ≠ 没有候选仓）。本轮未检查编号撞车。」**（**实测 `2026-10-12`**） | 已完成——**负向用例已跑通且分支可达**；故本条**登记即为闭合证据**，非"待办" | `已解除`（**本轮登记并当场实测**） |
 | **`GAP-022`** | **中英两版结构无机械判据** ⇒ **实测英文版缺两条规则**：`AGENTS.en.md` **没有 `§4.2 生命周期推进` 的正文**（只有 6 处指向它的引用——**指向一个英文里不存在的节**），且**整节缺 `§6.1 编号空间跨分支守卫`**。`README`/`AGENTS` 声明「英文是**同一规则源的语言投影**」（D4），而**投影里少了两条规则**——读者若只读英文，**会以为框架没有这两条**。**这是 `GAP-017` 同族风险的实例化**（"规则有了、机械检查没有"，且**这次真的漏了**） | **章节枚举对照**（`Select-String '^#{2,3} '`）：中文 **30 节** / 英文 **28 节**；逐节层级比对在 §4.2 处开始错位。**实质内容检索**：英文版 `§6.1` 相关关键词（`6\.1` / `cross-branch` / `ls-tree`）**命中 0**；`§4.2` **只有引用、无定义**（`## 5.` 紧跟 `### 4.1` 之后） | **补齐英文两节**（逐节对译），并把**章节数 + 逐节层级**作为可复跑的核对命令写进 `docs/delivery-gates.md`；**长期**需机械判据（归 `GAP-017` 同族） | `已解除`（**本轮补齐并实测 30=30**） |
 | **`GAP-023`** | **Antigravity 跨运行时适配的三重静默/死锁缺口**：① `user_rules` 单文件 `24,000` 字节硬上限将 `AGENTS.md`（45.7 KB）在 `§4.1` 末尾**静默截断**（`§4.2`–`§9` 整段消失，零报错）；② 后台钩子子进程中 `[Console]::IsInputRedirected` 恒为 `$true` 且无 EOF，调用 `[Console]::In.ReadToEnd()` **永久阻塞挂死**；③ 初版 `stop-adapter.ps1` 将 `.claude/hooks/*.ps1` 的 `exit 1 + stderr`（非阻断提示）与 `stdout` `decision:block`（真阻断）混同映射为 `decision:"continue"`，在存在远端历史分支编号撞车时**每轮永久死锁** | ① `user_rules` 实测出现 `<truncated 23909 bytes>` + `agy-customizations/docs/rules.md` 单文件 `24,000 B` 上限；② 初版钩子实跑挂死（`task-124` 超时强杀）；③ 带项目工作区实跑 `stop-adapter.ps1` 初版把远端 `023` 提示转成 `decision:"continue"` 拦截；修复后正/负向四格全通（见下留痕） | ① `GEMINI.md` 经 `@[label](path)` 展开 `prompts/AI总控.md` + `prompts/角色契约.md`（合计 22.9 KB < 24 KB），`.agents/hooks/inject-agents-tail.ps1` 从第 `23,000` 字节起（留 1KB 重叠区）按 `≤ 24,000` 字节动态多段切分经 `ephemeralMessage` 续载 `AGENTS.md` 后半段；② 移除钩子阻塞式 `stdin` 读取；③ `stop-adapter.ps1` 严格分离 `stdout` `decision:block`（转 `continue`）与 `exit 1 + stderr`（透传 stderr + `allow`） | `已解除`（**本轮实测通过**） |
+| **`GAP-024`** | **成熟度错位：架构骨架完整，但「物理咬合力」仍处于早期（Rule-Heavy, Guard-Light）**——全仓文本资产中 **92.3%**（36 个 `.md` · 5,871 行 · 478,535 B）为自然语言规则，仅 **7.4%**（4 个 `.ps1` + 2 个 `.json` · 747 行 · 38,591 B）具备进程级机械拦截；除回合前分片续载与回合末 `Stop` 守卫外，**总控不改业务代码、单次并发 ≤ 3、成对互审 ≤ 2 轮、五段式输出协议（`§3`）及十环准入（`GAP-017`）仍依赖模型自觉，缺 `PreToolUse` / `pre-commit` 物理阻断** | `git ls-files` 分扩展名实测（`2026-10-13`）：`.md` 36 文件 478,535 B vs `.ps1`/`.json` 6 文件 38,591 B；`Test-Path` 检查 `PreToolUse` 钩子与五段协议校验器均为 **False**（详见 [`docs/known-issues.md`](known-issues.md) §一/§二） | 将核心编排约束前移至 **`PreToolUse` 钩子**（如拦截总控直接写 `src/`、拦截超并发派发）与 **`Stop` 结构校验**（校验五段协议标题）；与 `GAP-017` 协同推进 | `未解除`（**本轮系统性自评登记**） |
+| **`GAP-025`** | **代码载体呈强烈「脚本胶水」属性（Script-Glue Fragility）**——全部机械守卫承载于 **4 个 PowerShell 脚本（703 行）**，强绑定 Windows PowerShell 5.1（钩子写死 `powershell.exe`、内部大量代码为 PS 5.1 的 `stderr`/`EAP`/`$LASTEXITCODE`/`IsInputRedirected` 历史怪癖打补丁），且进度页校验靠正则 `head\s*<b>...</b>` 抠取 HTML 字符串（UI 排版微调即落入「找不到标记静默放行」的失明分支），**缺结构化元数据契约与一键可跑的跨平台自动化回归套件** | 静态与实测核对（[`docs/known-issues.md`](known-issues.md) §三）：`.claude/settings.json` 与 `.agents/hooks.json` 硬编码 `powershell`/`powershell.exe`；`check-progress.ps1` 用正则直接匹配 HTML 标签；仓库内无自动化测试 runner | ① 进度页引入机器可读的结构化元数据块（与展示排版解耦）；② 抽离跨平台守卫入口（自动探测 `pwsh`/`powershell` 或收敛为独立 CLI）并将沙箱 18 格用例封装为一键自动化测试脚本 | `未解除`（**本轮系统性自评登记**） |
+| **`GAP-026`** | **多运行时适配放大「机械一致性」验证难度（Cross-Runtime Verification Complexity）**——双栈并行（Claude Code `@AGENTS.md` 单次展开 + 声明式 `tools:` vs Antigravity `24KB` 截断 + `PreInvocation` 动态分片 + `stop-adapter.ps1` 协议转接 + 命令式 `define_subagent(enable_write_tools: false)`）使验证矩阵翻倍；且 **Antigravity 下只读角色的权限剥夺退化为依赖总控调用 `define_subagent` 时不漏传参数，缺宿主级静态/前置强制** | 架构对比实测（[`docs/known-issues.md`](known-issues.md) §四）：Claude Code 只读围栏由 `.claude/agents/*.md` 顶部静态锁定，而 Antigravity 需在 `define_subagent` 入参传 `enable_write_tools: false`；双端无自动契约对拍脚本 | ① 在 `.agents/hooks.json` 增加 `PreToolUse` 钩子：当 `define_subagent` 目标为 `falsifier`/`gate-auditor` 且 `enable_write_tools` 不为 `false` 时物理阻断；② 建立双运行时契约与双语结构一键对拍脚本 | `未解除`（**本轮系统性自评登记**） |
 
 **`DEFER-` 登记表**（四列：编号 / 内容 / 理由 / 状态）——**`DEFER-` 是「有理由的主动延期」**（`AGENTS.md` §6），与 `GAP-`（**该做而未做**的缺口）**不同**，故**另起一表、不混入上表**；**理由一栏如实记录，未给理由就写"未给理由"，不得代为补写**。**按编号升序，编号不复用、不重号。** 登记前检索见**附录 A.7**。
 
@@ -334,6 +337,13 @@
   - `Stop` 正向（`project-progress.html` 的 `head` == 仓库 `HEAD`）：`stop-adapter.ps1` → `{"decision":"allow"}`（`exit=0`）；
   - `Stop` 负向（篡改 `project-progress.html` 的 `head` 为 `0000000`）：`stop-adapter.ps1` → `{"decision":"continue","reason":"进度页 project-progress.html 的 head 是 0000000，仓库当前是 ..."}`（**成功拦截**，测试后已还原）；
   - `Stop` 非阻断提示（`check-numbers.ps1` 遇跨分支撞车 `exit 1 + stderr`）：透传 `stderr` 首行提示 + `stdout` 返回 `{"decision":"allow"}`（**不死锁**）。
+
+**`GAP-024` / `GAP-025` / `GAP-026` 系统性成熟度与已知问题登记留痕（`2026-10-13`；全文见 [`docs/known-issues.md`](known-issues.md)）**：
+
+- **登记前检索**：`git grep -n "GAP-02[4-9]" HEAD` → **零命中**（`exit=1`），无编号撞车。
+- **为什么拆成三号并另立按需分析文件**：
+  - 按 `DEFER-005`（单文件不得过大，过大则拆分、按需读取），台账只留决策与跟踪所需的四列摘要，而四类系统性问题（① 物理咬合力早期 `GAP-024` · ② 脚本胶水脆弱性 `GAP-025` · ③ 双运行时机械一致性验证复杂度 `GAP-026` · ④ 既有深水区缺口汇总 `GAP-002/005/012/013/017/019`）的详细实测数据与收敛路径独立沉淀于 [`docs/known-issues.md`](known-issues.md)。
+  - **实测资产分布（`git ls-files` 口径）**：全仓文本资产中 `.md` 占 **92.3%**（36 文件 · 5,871 行 · 478,535 B），而 `.ps1` + `.json` 机械守卫仅占 **7.4%**（6 文件 · 747 行 · 38,591 B）——用实测数字锚定「骨架完整、咬合早期」的现状，拒绝粉饰（D1）。
 
 ---
 

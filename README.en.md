@@ -327,6 +327,8 @@ docs/
                                  the minimal three-step bootstrap, the project checklist
   guard-self-test.md             Isolated-sandbox self-test of the progress-page guard:
                                  two copy-paste negative cases + the measured readings
+  known-issues.md                **Maturity assessment & systemic known-issues analysis**:
+                                 measured profile of four problem domains + convergence roadmap
 ```
 > ⚠️ **Layouts differ, and this repo is "self-hosted"**: the repo is the directory that
 > **contains `.git`** (any name). The table above is annotated for the **target layout**
@@ -594,12 +596,20 @@ parts of `AGENTS.md`.
 
 ---
 
-## 13. Contributing and roadmap: where the deep water is
+## 13. Contributing and roadmap: maturity assessment, known issues, and deep water
 
-**Current stage**: the mechanisms work end to end (separation of powers + physical gate +
-negative cases in place); **no version has been released**.
+**Current stage**: the mechanisms work end to end (separation of powers + dual-runtime zero-intrusion adaptation + physical Stop gate + negative cases in place); **no version has been released**.
+Audited under D1 (only what is measured counts; no sugar-coating) and D4 (single source of truth), the framework's **systemic limitations and known issues** fall into four macro dimensions (full measured analysis and convergence roadmap in [`docs/known-issues.md`](docs/known-issues.md), tracked under [`GAP-024`..`GAP-026`](docs/ledger.md)):
+
+| Known Problem Domain | Status Quo & Root Bottleneck (`git ls-files` measured baseline) | Ledger Tracking |
+| --- | --- | --- |
+| **1. Architectural skeleton is complete, but "physical bite" is still early-stage** | **92.3%** of tracked text assets (36 `.md` files · 5,871 lines) are natural-language rules, while only **7.4%** (4 `.ps1` + 2 `.json` · 747 lines) carry process-level mechanical interception. Aside from `PreInvocation` chunk injection and `Stop` guards, **ten-stage entry gates, the three-hop chain, "orchestrator never writes business code," concurrency ≤ 3, and the 5-part output protocol still rely on model compliance**, lacking `PreToolUse` / `pre-commit` physical blocks | [`GAP-024`](docs/ledger.md) · [`GAP-017`](docs/ledger.md) |
+| **2. Code carrier retains strong "script-glue" fragility** | All mechanical guards live in **4 PowerShell scripts (703 lines)** tightly coupled to Windows PowerShell 5.1 (hardcoded `powershell.exe`, heavy defensive glue for PS 5.1 `stderr`/`EAP`/`$LASTEXITCODE`/`IsInputRedirected` quirks); and the progress-page check scrapes HTML via regex `head\s*<b>...</b>` (any UI markup tweak triggers the silent fail-open branch), lacking a structured metadata contract and cross-platform automated test runner | [`GAP-025`](docs/ledger.md) |
+| **3. Multi-runtime adaptation amplifies "mechanical consistency" verification difficulty** | Running dual stacks in parallel (Claude Code single-pass `@AGENTS.md` + declarative `tools:` vs Antigravity `24KB` truncation + `PreInvocation` dynamic slicing + `stop-adapter.ps1` protocol translation + imperative `define_subagent(enable_write_tools: false)`) doubles the verification matrix; and in Antigravity, read-only enforcement depends on the orchestrator passing `enable_write_tools: false` at call time without a `PreToolUse` guard | [`GAP-026`](docs/ledger.md) · [`GAP-023`](docs/ledger.md) |
+| **4. Registered deep-water gaps and human-adjudication backlog remain open** | Deep-water gaps touching "observational equivalence" and "trusted-base boundaries" (unverifiable read-only proxy execution `GAP-005`, missing-page/unborn silence indistinguishable from dead code `GAP-002`/`GAP-012`, `GIT_DIR` and smart-shim residue `GAP-013①`/`GAP-019`) plus 8 deferred / pending-human-decision items (`DEFER-001/004/006/007..011`) remain open | See table below & [`docs/ledger.md`](docs/ledger.md) |
+
 Open items live in **exactly one ledger** — [`docs/ledger.md`](docs/ledger.md):
-**anything "not yet done" that is not in the ledger does not exist**. Below are the **deep-water
+**anything "not yet done" that is not in the ledger does not exist**. Below are the **specific deep-water
 items** picked from that ledger; they are also where outside discussion is most welcome:
 
 | Id | The gap in one line | Why it is hard |
@@ -608,13 +618,13 @@ items** picked from that ledger; they are also where outside discussion is most 
 | [`GAP-002`](docs/ledger.md) | The guard is **doubly silent**: one wrong pointer disables **both** "silent when the page is missing" and "the SHA criterion"; and "silent when missing" is **observationally equivalent to dead code** | **Mitigated** (a pointer that exists but yields no name → `exit 1` + stderr); the **residue is an accepted cost**: a pointer naming a **non-existent** page stays silent |
 | [`GAP-017`](docs/ledger.md) | §4.2 gives the **hard rule and the three-hop chain**, but **no guard checks whether the previous stage's hard assets exist** | So "missing one hop blocks the advance" currently **relies on good intentions** — the same family of defect as "a reminder gets ignored; a block does not" |
 | [`GAP-018`](docs/ledger.md) | Several rules **depend on one particular project's wording** and **misfire or lose meaning** under another layout (two fixed; the rest need a line-by-line sweep) | The criterion is "**depend on the design, not on the wording**" — but *which* rules still depend on wording can only be found by reading |
+| [`GAP-024`..`026`](docs/known-issues.md) | **Early physical bite (92.3% prose rules) · PowerShell script-glue & HTML regex fragility · Dual-runtime mechanical consistency lacks automated contract tests** | Needs interception shifted left from `Stop` to `PreToolUse`/Git Hooks, and script glue upgraded to cross-platform structured contracts and automated test suites (see [`docs/known-issues.md`](docs/known-issues.md)) |
 
 **How to contribute** (read `AGENTS.md` first — it is the source of rules):
 
 - **If you agree with the philosophy** — "discipline cannot be fixed by reminders, only by
-  mechanisms" — what is most missing is **adapter scripts**: fill the ten stages' criterion
-  sockets (§12) with **copy-pasteable commands for your stack**. That is the external
-  contribution this framework wants most.
+  mechanisms" — what is most missing is **adapter scripts and pre-execution guards**: fill the ten stages' criterion
+  sockets (§12) with **copy-pasteable commands for your stack**, or contribute `PreToolUse` guards for `GAP-017`/`GAP-024`/`GAP-026`.
 - **Found a crack in a criterion?** Bring a **negative case** (what fault injection makes it pass
   silently). A bare "this looks wrong" is hard to accept here, because the framework's position
   is **D3: a criterion must be falsifiable**.
@@ -623,7 +633,8 @@ items** picked from that ledger; they are also where outside discussion is most 
   that did not exist, and **until someone measured it, every reader believed it**.
 
 > **Read before contributing**: [`AGENTS.md`](AGENTS.md) (source of rules) ·
-> [`docs/ledger.md`](docs/ledger.md) (the only ledger of open items).
+> [`docs/ledger.md`](docs/ledger.md) (the only ledger of open items) ·
+> [`docs/known-issues.md`](docs/known-issues.md) (maturity assessment & known issues analysis).
 > **This README is not a source of rules** — it is an entry point and a projection; where they
 > disagree, **`AGENTS.md` wins**.
 
