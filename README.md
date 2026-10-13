@@ -2,6 +2,8 @@
 
 **中文** · [English](README.en.md)
 
+[![Runtime: Claude Code](https://img.shields.io/badge/Runtime-Claude_Code-blue)](./CLAUDE.md)
+[![Runtime: Antigravity](https://img.shields.io/badge/Runtime-Antigravity-orange)](./GEMINI.md)
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Status: Experimental](https://img.shields.io/badge/status-experimental-orange.svg)
 ![Runtime: Claude Code](https://img.shields.io/badge/runtime-Claude%20Code-8A2BE2.svg)
