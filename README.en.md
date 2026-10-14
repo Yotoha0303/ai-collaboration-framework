@@ -232,6 +232,7 @@ and are not among those ten:
 | **State consolidation** | **Subagents must not modify the runtime memory** — the orchestrator distils it into a ≤5-line summary |
 | **No silent downgrade** | If a role is unavailable (unregistered / missing), **you must say so explicitly**; **never** quietly switch to "the orchestrator will do it" or substitute a generic subagent |
 | **Decision routing** | At a decision point, **never stand still waiting**, and **never** quietly do as you please — if the decision is **non-essential** (reversible + in-repo + **not an exemption**) then **execute the recommendation**, leaving **one line in `record.md`** and marking it as a recommendation; if **essential**, **record it and skip**, then move on to the next task. **Criterion ③'s enumeration is an example, not a closed set**, and **any recommendation whose effect is to skip a check this framework requires always takes route ②**. **Without that trace, ① and "quietly doing as you please" are observationally identical** |
+| **Task-location protocol** | **Before acting**: ① **restate** (one sentence, written for the user) ② **place it** (lifecycle stage × system layer) ③ **acknowledge** (the user corrects it on the spot if wrong). **Restating is not asking permission — it is declaring your understanding**: except for irreversible actions or an explicit request to hold off, **restate then start**, or the protocol itself becomes "standing still waiting". Criterion = "**corrected once**" — countable, hence falsifiable (ledger `GAP-027`) |
 
 > The last two are the most commonly violated. **"No silent downgrade" has a cost** — it means
 > that when a role is missing, **the task stops** rather than "getting finished somehow."
@@ -498,7 +499,7 @@ The three runtime files (`record.md` / `memory.md` / the progress page) are main
 framework automatically — **you do not need to manage them**; the progress page is the
 human-readable current status.
 
-### Walkthrough 1: the four gates inside one session
+### Walkthrough 1: the five gates inside one session
 
 > Scenario: **add a user-query endpoint**. Every gate below already exists in the rules
 > (sources are cited); this is not demo talk.
@@ -509,6 +510,11 @@ human-readable current status.
 ```
 You: add a user-query endpoint
   │
+├─ ⓪ Before acting: the task-location protocol — restate → place → acknowledge  (AGENTS.md §4.0)
+│     └─ the orchestrator first restates "you want me to add a user-query endpoint"
+│        and places it at "02 development × code layer"; a wrong restatement is corrected on the spot
+│        (acting without placing it is exactly the "same instruction repeated" this framework prevents)
+│
   ├─ ① The orchestrator tries to go straight into stage 02 (development)
   │     └─ ✗ blocked by the "01 Design" hard gate — no ADR on disk, acceptance criteria not testable
   │        It outputs the blocking reason + the release condition,
@@ -531,7 +537,7 @@ You: add a user-query endpoint
         └─ match / page not yet created       → released
 ```
 
-**What you should notice**: the four gates are **not equally mechanical** — this has to be said
+**What you should notice**: the five gates are **not equally mechanical** — this has to be said
 plainly, or it becomes an overclaim:
 
 | Gate | What makes it work | How mechanical |
@@ -567,8 +573,23 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/check-progress
 | **The maintainer's working tree** | `{"decision":"block", …}` | **Neither ① nor ②** — it merely **restates the status quo** (the page records an older SHA); **nothing was injected** |
 
 **Step two: both cases must be run together** — but in an **isolated sandbox**, where the HEAD is
-one you created and the page is one you wrote, so the readings are controlled. The script and the
-measured readings are in [`docs/guard-self-test.md`](docs/guard-self-test.md):
+one you created and the page is one you wrote, so the readings are controlled.
+
+**One-command entry point** (recommended; the sandbox is a temp directory, self-deleting, and does
+not touch your working tree):
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/self-test.ps1
+# Expect: PASS = 21 / FAIL = 0, exit code 0
+```
+
+It covers **A–E, 21 cells in five groups**: **A** progress-page guard 5 · **B** numbering guard 2 ·
+**C** rule-projection 5 + 4 anchors · **D** dual-runtime parity 3 · **E** progress-page projection
+completeness 2. **Every cell's teeth were verified negatively** — swap the guard for an `exit 0`
+stub, or inject a fault into each C/D/E cell, and **each one FAILs**.
+
+This document details only the **two A-group cells** below; the script and the measured readings
+are in [`docs/guard-self-test.md`](docs/guard-self-test.md):
 
 - **Case ①** no page → must be **silent `exit 0`** (no output at all);
 - **Case ②** the page **exists** with a wrong SHA → must emit `{"decision":"block"}`.
@@ -576,12 +597,17 @@ measured readings are in [`docs/guard-self-test.md`](docs/guard-self-test.md):
 > **Only if ② still has teeth can you conclude that ①'s silence means "no criterion applies"
 > rather than "the script is dead"** (D3) — the two branches are **observationally equivalent**,
 > so ① alone can never separate "normal" from "dead code."
-> **Re-run both cases after renaming the page** — the page name comes from
+> **Re-run after renaming the page** — the page name comes from
 > `.claude/progress-page.txt`, so renaming means editing that one line.
 >
 > ⚠️ **Do not judge whether it has teeth by the exit code**: the block path is
 > **`exit 0` + JSON on stdout** (`exit 1` is reserved for the two notice-only channels). A
 > criterion has to look at the **right channel** (D1).
+>
+> ⚠️ **Why the self-test is not wired into `Stop`**: it measures ~12 s, while the two existing hooks
+> time out at 15s/20s — another 12 s per turn is not worth it, and a slow machine would hit the
+> timeout. **It is a gate you run "after changing a guard or a rule", not a per-turn guard.**
+> **This is an explicit trade-off (ledger `DEFER-014`), not an omission.**
 
 ### Adopting it: the gate's "language socket" + minimal bootstrap
 
@@ -610,14 +636,14 @@ parts of `AGENTS.md`.
 ## 13. Contributing and roadmap: maturity assessment, known issues, and deep water
 
 **Current stage**: the mechanisms work end to end (separation of powers + dual-runtime zero-intrusion adaptation + physical Stop gate + negative cases in place); **no version has been released**.
-Audited under D1 (only what is measured counts; no sugar-coating) and D4 (single source of truth), the framework's **systemic limitations and known issues** fall into four macro dimensions (full measured analysis and convergence roadmap in [`docs/known-issues.md`](docs/known-issues.md), tracked under [`GAP-024`..`GAP-026`](docs/ledger.md)):
+Audited under D1 (only what is measured counts; no sugar-coating) and D4 (single source of truth), the framework's **systemic limitations and known issues** fall into four macro dimensions (full measured analysis and convergence roadmap in [`docs/known-issues.md`](docs/known-issues.md), tracked under [`GAP-024`..`GAP-027`](docs/ledger.md)):
 
 | Known Problem Domain | Status Quo & Root Bottleneck (`git ls-files` measured baseline) | Ledger Tracking |
 | --- | --- | --- |
 | **1. Architectural skeleton is complete, but "physical bite" is still early-stage** | **92.3%** of tracked text assets (37 `.md` files · 6,023 lines · 506,018 B) are natural-language rules, while only **7.0%** (4 `.ps1` + 2 `.json` · 747 lines · 38,591 B) carry process-level mechanical interception. Aside from `PreInvocation` chunk injection and `Stop` guards, **ten-stage entry gates, the three-hop chain, "orchestrator never writes business code," concurrency ≤ 3, and the 5-part output protocol still rely on model compliance**, lacking `PreToolUse` / `pre-commit` physical blocks | [`GAP-024`](docs/ledger.md) · [`GAP-017`](docs/ledger.md) |
 | **2. Code carrier retains strong "script-glue" fragility** | All mechanical guards live in **4 PowerShell scripts (703 lines)** tightly coupled to Windows PowerShell 5.1 (hardcoded `powershell.exe`, heavy defensive glue for PS 5.1 `stderr`/`EAP`/`$LASTEXITCODE`/`IsInputRedirected` quirks); and the progress-page check scrapes HTML via regex `head\s*<b>...</b>` (any UI markup tweak triggers the silent fail-open branch), lacking a structured metadata contract and cross-platform automated test runner | [`GAP-025`](docs/ledger.md) |
 | **3. Multi-runtime adaptation amplifies "mechanical consistency" verification difficulty** | Running dual stacks in parallel (Claude Code single-pass `@AGENTS.md` + declarative `tools:` vs Antigravity `24KB` truncation + `PreInvocation` dynamic slicing + `stop-adapter.ps1` protocol translation + imperative `define_subagent(enable_write_tools: false)`) doubles the verification matrix; and in Antigravity, read-only enforcement depends on the orchestrator passing `enable_write_tools: false` at call time without a `PreToolUse` guard | [`GAP-026`](docs/ledger.md) · [`GAP-023`](docs/ledger.md) |
-| **4. Registered deep-water gaps and human-adjudication backlog remain open** | Deep-water gaps touching "observational equivalence" and "trusted-base boundaries" (unverifiable read-only proxy execution `GAP-005`, missing-page/unborn silence indistinguishable from dead code `GAP-002`/`GAP-012`, `GIT_DIR` and smart-shim residue `GAP-013①`/`GAP-019`) plus 9 deferred / pending-human-decision items (`DEFER-001/004/006/007..012`) remain open | See table below & [`docs/ledger.md`](docs/ledger.md) |
+| **4. Registered deep-water gaps and human-adjudication backlog remain open** | Deep-water gaps touching "observational equivalence" and "trusted-base boundaries" (unverifiable read-only proxy execution `GAP-005`, missing-page/unborn silence indistinguishable from dead code `GAP-002`/`GAP-012`, `GIT_DIR` and smart-shim residue `GAP-013①`/`GAP-019`) plus 9 deferred / pending-human-decision items (`DEFER-001/004/006/007..014`) remain open | See table below & [`docs/ledger.md`](docs/ledger.md) |
 
 Open items live in **exactly one ledger** — [`docs/ledger.md`](docs/ledger.md):
 **anything "not yet done" that is not in the ledger does not exist**. Below are the **specific deep-water
