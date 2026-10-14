@@ -1,10 +1,11 @@
 # AI Collaboration Engineering Framework
 
+[中文](README.md) · **English**
+
 [![Runtime: Claude Code](https://img.shields.io/badge/Runtime-Claude_Code-blue)](./CLAUDE.md)
 [![Runtime: Antigravity](https://img.shields.io/badge/Runtime-Antigravity-orange)](./GEMINI.md)
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Status: Experimental](https://img.shields.io/badge/status-experimental-orange.svg)
-![Runtime: Claude Code](https://img.shields.io/badge/runtime-Claude%20Code-8A2BE2.svg)
 ![Hooks: PowerShell · Bash](https://img.shields.io/badge/hooks-PowerShell%20%C2%B7%20Bash-4B8BBE.svg)
 
 > **Documentation baseline**: this framework treats **Chinese as the single source of truth
@@ -230,11 +231,21 @@ and are not among those ten:
 | **Mandatory cross-review** | Architecture/scheme changes must be **summoned in pairs** to review each other; cross-examination capped at **2 rounds**; if unresolved, escalate the disagreement to a human |
 | **State consolidation** | **Subagents must not modify the runtime memory** — the orchestrator distils it into a ≤5-line summary |
 | **No silent downgrade** | If a role is unavailable (unregistered / missing), **you must say so explicitly**; **never** quietly switch to "the orchestrator will do it" or substitute a generic subagent |
+| **Decision routing** | At a decision point, **never stand still waiting**, and **never** quietly do as you please — if the decision is **non-essential** (reversible + in-repo + **not an exemption**) then **execute the recommendation**, leaving **one line in `record.md`** and marking it as a recommendation; if **essential**, **record it and skip**, then move on to the next task. **Criterion ③'s enumeration is an example, not a closed set**, and **any recommendation whose effect is to skip a check this framework requires always takes route ②**. **Without that trace, ① and "quietly doing as you please" are observationally identical** |
 
 > The last two are the most commonly violated. **"No silent downgrade" has a cost** — it means
 > that when a role is missing, **the task stops** rather than "getting finished somehow."
 > The framework holds that this cost must be paid: output outside the hard boundary is
 > **not accepted**, and **re-dispatching is cheaper than rework**.
+>
+> **"Decision routing" is its mirror image** — it governs **when to keep moving rather than stop**:
+> merely listing options and stopping is exactly where "the user issues the same instruction again"
+> comes from; quietly doing the irreversible things that were the human's to decide is the error in
+> the opposite direction. Both share one root cause: **there was no line saying what must stop and
+> what must proceed**. **The line is here**: **an unavailable role = hard boundary, you must stop**;
+> **an everyday decision = routed by the three criteria (reversible / in-repo / not an exemption)**.
+> The rule **expressly forbids** treating "execute the recommendation" as a **gate exemption** —
+> D2 and the §2 gate matrix are **either satisfied or blocking, with no third path**.
 
 ---
 
@@ -603,10 +614,10 @@ Audited under D1 (only what is measured counts; no sugar-coating) and D4 (single
 
 | Known Problem Domain | Status Quo & Root Bottleneck (`git ls-files` measured baseline) | Ledger Tracking |
 | --- | --- | --- |
-| **1. Architectural skeleton is complete, but "physical bite" is still early-stage** | **92.3%** of tracked text assets (36 `.md` files · 5,871 lines) are natural-language rules, while only **7.4%** (4 `.ps1` + 2 `.json` · 747 lines) carry process-level mechanical interception. Aside from `PreInvocation` chunk injection and `Stop` guards, **ten-stage entry gates, the three-hop chain, "orchestrator never writes business code," concurrency ≤ 3, and the 5-part output protocol still rely on model compliance**, lacking `PreToolUse` / `pre-commit` physical blocks | [`GAP-024`](docs/ledger.md) · [`GAP-017`](docs/ledger.md) |
+| **1. Architectural skeleton is complete, but "physical bite" is still early-stage** | **92.3%** of tracked text assets (37 `.md` files · 6,023 lines · 506,018 B) are natural-language rules, while only **7.0%** (4 `.ps1` + 2 `.json` · 747 lines · 38,591 B) carry process-level mechanical interception. Aside from `PreInvocation` chunk injection and `Stop` guards, **ten-stage entry gates, the three-hop chain, "orchestrator never writes business code," concurrency ≤ 3, and the 5-part output protocol still rely on model compliance**, lacking `PreToolUse` / `pre-commit` physical blocks | [`GAP-024`](docs/ledger.md) · [`GAP-017`](docs/ledger.md) |
 | **2. Code carrier retains strong "script-glue" fragility** | All mechanical guards live in **4 PowerShell scripts (703 lines)** tightly coupled to Windows PowerShell 5.1 (hardcoded `powershell.exe`, heavy defensive glue for PS 5.1 `stderr`/`EAP`/`$LASTEXITCODE`/`IsInputRedirected` quirks); and the progress-page check scrapes HTML via regex `head\s*<b>...</b>` (any UI markup tweak triggers the silent fail-open branch), lacking a structured metadata contract and cross-platform automated test runner | [`GAP-025`](docs/ledger.md) |
 | **3. Multi-runtime adaptation amplifies "mechanical consistency" verification difficulty** | Running dual stacks in parallel (Claude Code single-pass `@AGENTS.md` + declarative `tools:` vs Antigravity `24KB` truncation + `PreInvocation` dynamic slicing + `stop-adapter.ps1` protocol translation + imperative `define_subagent(enable_write_tools: false)`) doubles the verification matrix; and in Antigravity, read-only enforcement depends on the orchestrator passing `enable_write_tools: false` at call time without a `PreToolUse` guard | [`GAP-026`](docs/ledger.md) · [`GAP-023`](docs/ledger.md) |
-| **4. Registered deep-water gaps and human-adjudication backlog remain open** | Deep-water gaps touching "observational equivalence" and "trusted-base boundaries" (unverifiable read-only proxy execution `GAP-005`, missing-page/unborn silence indistinguishable from dead code `GAP-002`/`GAP-012`, `GIT_DIR` and smart-shim residue `GAP-013①`/`GAP-019`) plus 8 deferred / pending-human-decision items (`DEFER-001/004/006/007..011`) remain open | See table below & [`docs/ledger.md`](docs/ledger.md) |
+| **4. Registered deep-water gaps and human-adjudication backlog remain open** | Deep-water gaps touching "observational equivalence" and "trusted-base boundaries" (unverifiable read-only proxy execution `GAP-005`, missing-page/unborn silence indistinguishable from dead code `GAP-002`/`GAP-012`, `GIT_DIR` and smart-shim residue `GAP-013①`/`GAP-019`) plus 9 deferred / pending-human-decision items (`DEFER-001/004/006/007..012`) remain open | See table below & [`docs/ledger.md`](docs/ledger.md) |
 
 Open items live in **exactly one ledger** — [`docs/ledger.md`](docs/ledger.md):
 **anything "not yet done" that is not in the ledger does not exist**. Below are the **specific deep-water
@@ -618,7 +629,7 @@ items** picked from that ledger; they are also where outside discussion is most 
 | [`GAP-002`](docs/ledger.md) | The guard is **doubly silent**: one wrong pointer disables **both** "silent when the page is missing" and "the SHA criterion"; and "silent when missing" is **observationally equivalent to dead code** | **Mitigated** (a pointer that exists but yields no name → `exit 1` + stderr); the **residue is an accepted cost**: a pointer naming a **non-existent** page stays silent |
 | [`GAP-017`](docs/ledger.md) | §4.2 gives the **hard rule and the three-hop chain**, but **no guard checks whether the previous stage's hard assets exist** | So "missing one hop blocks the advance" currently **relies on good intentions** — the same family of defect as "a reminder gets ignored; a block does not" |
 | [`GAP-018`](docs/ledger.md) | Several rules **depend on one particular project's wording** and **misfire or lose meaning** under another layout (two fixed; the rest need a line-by-line sweep) | The criterion is "**depend on the design, not on the wording**" — but *which* rules still depend on wording can only be found by reading |
-| [`GAP-024`..`026`](docs/known-issues.md) | **Early physical bite (92.3% prose rules) · PowerShell script-glue & HTML regex fragility · Dual-runtime mechanical consistency lacks automated contract tests** | Needs interception shifted left from `Stop` to `PreToolUse`/Git Hooks, and script glue upgraded to cross-platform structured contracts and automated test suites (see [`docs/known-issues.md`](docs/known-issues.md)) |
+| [`GAP-024`..`027`](docs/known-issues.md) | **Early physical bite (92.3% prose rules) · PowerShell script-glue & HTML regex fragility · Dual-runtime mechanical consistency lacks automated contract tests · Task-location failure has no carrier** | Needs interception shifted left from `Stop` to `PreToolUse`/Git Hooks, and script glue upgraded to cross-platform structured contracts and automated test suites (see [`docs/known-issues.md`](docs/known-issues.md)) |
 
 **How to contribute** (read `AGENTS.md` first — it is the source of rules):
 

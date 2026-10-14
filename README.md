@@ -6,7 +6,6 @@
 [![Runtime: Antigravity](https://img.shields.io/badge/Runtime-Antigravity-orange)](./GEMINI.md)
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Status: Experimental](https://img.shields.io/badge/status-experimental-orange.svg)
-![Runtime: Claude Code](https://img.shields.io/badge/runtime-Claude%20Code-8A2BE2.svg)
 ![Hooks: PowerShell · Bash](https://img.shields.io/badge/hooks-PowerShell%20%C2%B7%20Bash-4B8BBE.svg)
 
 > **文档基线**：本框架以**中文为单一事实源（SSOT）**，英文文档（`README.en.md` / `AGENTS.en.md`）
@@ -220,10 +219,17 @@ flowchart TD
 | **强制互审** | 架构/方案变更时**成对唤起**互审；交叉质询**上限 2 轮**，不收敛则**提炼分歧点上交人工** |
 | **状态沉淀** | **子代理严禁擅自修改运行态记忆**——由总控提炼成 ≤5 行摘要后统一写入 |
 | **禁止静默降级** | 角色不可用（未注册/缺角色）时**必须明确告知**，**不得**悄悄改成"总控自己干"或用通用子代理顶替 |
+| **决策分派** | 遇决策点**不得停在原地等**，也**不得**默默做光——**非必要**（可逆 + 仓内 + **不构成豁免**）则**执行推荐**，**① 须在 `record.md` 留一行**并标明是推荐；**必要**则**记录后跳过**、继续下一个任务。**判据③ 的枚举是举例不是封闭集合**，且**凡效果是"少走一道本文件要求的检查"的推荐，一律走 ②**。**没有那个留痕，① 与"默默做光"在观测上同形** |
 
 > 最后两条是本框架里最容易被违反的。**「禁止静默降级」是有代价的**——
 > 它意味着角色缺失时任务会**停下来**，而不是"先凑合做完"。
 > 框架认为这个代价必须付：越出硬边界的产出**不采信**，**重派比返工便宜**。
+>
+> **「决策分派」是它的反面**——它管的是**该往前走的时候不要停**：
+> 只列选项然后停下，正是"用户反复下同一道指令"的来源；而把该由人定的**不可逆**事项默默做掉，
+> 则是反方向的错。两者根因相同：**没有一条"什么该停、什么该走"的分界线**。
+> **边界在此**：**角色不可用 = 硬边界，必须停**；**日常决策 = 按可逆/仓内/不构成豁免三条判据分流**。
+> 该规则**明文禁止**把「执行推荐」当成**门禁豁免**——D2 与 §2 门禁**要么满足、要么阻断，没有第三条路**。
 >
 > **「保留机械只读」也付了同族的代价**：只读角色因此**没有 shell**，
 > 它们**跑不了命令**——其执行**一律交总控代跑**，产物是**攻击清单 / 裁决表 + 命令清单**。
@@ -547,10 +553,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/check-progress
 
 | 已知问题维度 | 现状与核心症结（`git ls-files` 实测口径） | 台账跟踪 |
 | --- | --- | --- |
-| **1. 架构骨架更完整，但「物理咬合力」仍处于早期** | 全仓文本资产中 **92.3%**（36 个 `.md` · 5,871 行）为自然语言规则，仅 **7.4%**（4 个 `.ps1` + 2 个 `.json` · 747 行）具备进程级机械拦截。除回合前分片续载与回合末 `Stop` 守卫外，**十环转段准入、三跳链必派、总控不写业务代码、单次并发 ≤ 3 与五段输出协议仍靠模型自觉**，缺 `PreToolUse` / `pre-commit` 前置物理阻断 | [`GAP-024`](docs/ledger.md) · [`GAP-017`](docs/ledger.md) |
+| **1. 架构骨架更完整，但「物理咬合力」仍处于早期** | 全仓文本资产中 **92.3%**（37 个 `.md` · 6,023 行 · 506,018 B）为自然语言规则，仅 **7.0%**（4 个 `.ps1` + 2 个 `.json` · 747 行 · 38,591 B）具备进程级机械拦截。除回合前分片续载与回合末 `Stop` 守卫外，**十环转段准入、三跳链必派、总控不写业务代码、单次并发 ≤ 3 与五段输出协议仍靠模型自觉**，缺 `PreToolUse` / `pre-commit` 前置物理阻断 | [`GAP-024`](docs/ledger.md) · [`GAP-017`](docs/ledger.md) |
 | **2. 代码载体依然具有强烈的「脚本胶水」属性** | 全部机械守卫承载于 **4 个 PowerShell 脚本（703 行）**，强耦合 Windows PowerShell 5.1（钩子写死 `powershell.exe`、大量代码为 PS 5.1 的 `stderr`/`EAP`/`$LASTEXITCODE`/`IsInputRedirected` 历史怪癖打补丁）；且进度页校验靠正则 `head\s*<b>...</b>` 抠取 HTML 字符串（UI 排版微调即落入「找不到标记静默放行」的失明分支），缺结构化元数据契约与跨平台一键自动化回归套件 | [`GAP-025`](docs/ledger.md) |
 | **3. 多运行时适配放大了「机械一致性」的验证难度** | 双栈并行（Claude Code `@AGENTS.md` 单次展开 + 声明式 `tools:` vs Antigravity `24KB` 截断 + `PreInvocation` 动态分片 + `stop-adapter.ps1` 协议转接 + 命令式 `define_subagent(enable_write_tools: false)`）使验证矩阵翻倍；且 Antigravity 下只读角色的权限剥夺依赖总控调用时不漏传参数，缺 `PreToolUse` 前置强制与双端自动对拍工具 | [`GAP-026`](docs/ledger.md) · [`GAP-023`](docs/ledger.md) |
-| **4. 已登记的深水区缺口与待裁定积压依然待解** | 触及「观测等价性」与「可信基边界」的深水区缺口（如只读代跑真伪无判据 `GAP-005`、缺页/unborn 静默与死代码同形 `GAP-002`/`GAP-012`、`GIT_DIR` 与同源互斥 shim 残余 `GAP-013①`/`GAP-019`）及 8 项延期/待人工价值裁定项（`DEFER-001/004/006/007..011`）仍待解 | 见下方深水区表与 [`docs/ledger.md`](docs/ledger.md) |
+| **4. 已登记的深水区缺口与待裁定积压依然待解** | 触及「观测等价性」与「可信基边界」的深水区缺口（如只读代跑真伪无判据 `GAP-005`、缺页/unborn 静默与死代码同形 `GAP-002`/`GAP-012`、`GIT_DIR` 与同源互斥 shim 残余 `GAP-013①`/`GAP-019`）及 9 项延期/待人工价值裁定项（`DEFER-001/004/006/007..012`）仍待解 | 见下方深水区表与 [`docs/ledger.md`](docs/ledger.md) |
 
 未竟事项**只有一处台账**——[`docs/ledger.md`](docs/ledger.md)：
 **不在台账里的"还没做"等于不存在**。下面是从台账里挑出的**具体深水区条目**，
@@ -562,7 +568,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/check-progress
 | [`GAP-002`](docs/ledger.md) | 守卫**双静默**：指针一改错，「缺页静默」与「SHA 判据」**同时失效**；且「缺页静默」与「死代码」**在观测上等价** | **已缓解**（指针存在却读不出页名 → `exit 1` + stderr），**残余为已接受代价**：指针指向**不存在的页名**时仍静默 |
 | [`GAP-017`](docs/ledger.md) | §4.2 生命周期推进给了**硬规则与三跳链**，但**没有任何守卫检查"上一环的硬资产是否存在"** | 于是"缺一则不得进入下一阶段"目前**只靠自觉**——与「提醒会被忽略，阻断不会」同族的缺陷 |
 | [`GAP-018`](docs/ledger.md) | 有几处规则**依赖了某个具体项目的措辞**，换布局就**误伤或失义**（已改两处，其余须逐条排查） | 判据是「**依赖设计**，不依赖措辞」——但"哪几处还在依赖措辞"只能靠人读出来 |
-| [`GAP-024`..`026`](docs/known-issues.md) | **物理咬合力早期（92.3% 纯规则）· PowerShell 脚本胶水与 HTML 正则脆弱性 · 双运行时机械一致性缺自动对拍** | 需将拦截点从回合末 `Stop` 前移至 `PreToolUse`/Git Hooks，将脚本胶水升级为跨平台结构化契约与自动化回归套件（详见 [`docs/known-issues.md`](docs/known-issues.md)） |
+| [`GAP-024`..`027`](docs/known-issues.md) | **物理咬合力早期（92.3% 纯规则）· PowerShell 脚本胶水与 HTML 正则脆弱性 · 双运行时机械一致性缺自动对拍 · 任务定位失败无承载形式** | 需将拦截点从回合末 `Stop` 前移至 `PreToolUse`/Git Hooks，将脚本胶水升级为跨平台结构化契约与自动化回归套件（详见 [`docs/known-issues.md`](docs/known-issues.md)） |
 
 **怎么参与**（先读完 `AGENTS.md`，它才是规则源）：
 

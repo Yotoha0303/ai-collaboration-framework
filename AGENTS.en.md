@@ -300,6 +300,68 @@ hard boundary is **not accepted** and must be re-dispatched.
 > "getting finished somehow." The framework holds that this cost must be paid —
 > **re-dispatching is cheaper than rework**.
 
+**Decision routing (the fixed action when a decision point is hit)**:
+
+When the orchestrator **hits a decision that needs making**, it must **not stop and wait**, and must
+not **quietly do as it pleases** — it takes **one of the two routes below, and finishes it on the spot**.
+When a subagent hits a decision point, it escalates to the orchestrator per its **escalation condition**
+(`prompts/角色契约.md`, item 8), and the orchestrator runs this section — **a subagent may not
+"execute the recommendation" on its own**.
+
+| Route | Criterion (**all three must hold to take this route**) | Action |
+| --- | --- | --- |
+| **① Non-essential → execute the recommendation** | ① **Reversible**: a mistake can be undone by one commit / a revert, leaving **no irreversible trace**;<br>② **In-repo**: needs no action outside the repository (platform panel / secrets / DNS / a human signature — the same criterion as the **"who does it"** column of §5 "pending-action documents");<br>③ **Not an exemption**: **exempts no hard constraint in this file** — D1–D4 · the §2 gate matrix · **the §3 five-part protocol** · **the §4.2 three-hop chain** · **§5 delivery path and local gates**. **This enumeration is an example, not a closed set.** | **Decide + reason for the recommendation + an executable action**, **done on the spot**; **route ① must leave one line in `record.md`** (`D4 决策分派① … :: conclusion`, stating the reason and the point at which it can be overruled) — **this is the shared anchor of ① and ②**; without it, ① is observationally identical to "quietly doing as you please"; and **mark it "orchestrator recommendation"** in the deliverable and the record — the user **may overrule it afterwards** |
+| **② Essential → record, then skip** | **any** of the above fails | **Register** (`GAP-` / `DEFER-` · the `pending-adjudication` table, per §6) → **skip** → **move on to the next task**. **Does not block the rest of the work, does not ask again and again** |
+
+**Three hard boundaries**:
+
+1. **"Execute the recommendation" is not "exemption from a gate"** — D2 hard stage gates and the §2
+   gate matrix are **not eligible for a recommendation**: they are **either satisfied or blocking**,
+   with **no third path**. Anything of the form "I recommend skipping stage 01 and writing stage 02 code"
+   is **not a decision — it is a violation**.
+   **Likewise**: **"I recommend skipping the §4.2 three-hop chain this stage" is not a decision either —
+   it is a violation**, because **§4.2 shares its root with D2**: it decides whether the next stage may
+   begin, and is **not an "everyday decision"** (see the `⚠️ Boundary of criterion ③` note below).
+2. **Reversibility is a criterion, not a feeling** — anything writing to **immutable history**
+   (`push --force` · rewriting an **already-published** record · **deleting** an existing line), or
+   **requiring an external action**, **always takes route ②**. Same root as §5 "**historical snapshots
+   are not rewritten**" and "**pending actions can only be done by a human or a platform**".
+   **That list is likewise an example**: **tagging / releasing / flipping an ADR to Accepted / changing a
+   remote ref** and other irreversible forms **outside the enumeration** **also take route ②**.
+   **The criterion is "can this be undone in one step", not "is it on the list".**
+3. **A recommendation must be executable, and must be marked as a recommendation** — do **not** merely
+   list options and stop (that is exactly where "repeatedly issuing the same instruction" comes from);
+   and do **not** present a recommendation as an accomplished fact without marking it (that would rob the
+   user **of the chance to overrule**).
+   **It must also leave a verifiable trace** (route ① leaves a line in `record.md`) — otherwise
+   "**executing the recommendation**" and "**quietly doing as you please**" are
+   **observationally indistinguishable**: **route ② always lands in the ledger, so if ① leaves no trace,
+   the result is "a decision you want untraced simply takes route ①"** — the most exploitable structural
+   gap in this section (`falsifier`, `A12`).
+
+> ⚠️ **Boundary of criterion ③ (narrowed on `2026-10-14` after `falsifier` falsified it — the original text listed only `D1–D4 and §2`)**:
+> **The original was a <u>closed enumeration</u>**, and `§4.2` (the three-hop chain) is **neither D1–D4 nor
+> one of the ten stages of §2**; so on a strict reading, **"I recommend skipping the §4.2 three-hop chain"
+> could pass criterion ③** — this was exactly the breach `falsifier` found.
+> By the same reading, `§3` item 4 (negative falsification) **could also be "lawfully" recommended away**
+> (`D3` requires a negative case *when writing a criterion*, **not** that every delivery contain a negative
+> segment, so skipping it is not a D3 exemption).
+> **Fixed**: criterion ③'s enumeration is **now open — "any hard constraint in this file"** — and
+> explicitly names `§3` / `§4.2` / `§5`.
+> **The test**: whenever the effect of a recommendation is to **skip one of the checks this file requires**,
+> that recommendation **always takes route ②** (registered, then decided by a human) — **never route ①**.
+
+> ⚠️ **The boundary of this section (read together with the previous one — do not conflate them)**:
+> when a **role is unavailable** (unregistered / missing role / wrong launch directory), the previous
+> section governs and you **must stop** — that is a **hard boundary**, not a "decision point," and
+> **route ① does not apply**. **"What must stop" and "what must proceed" divide exactly here.**
+>
+> ⚠️ **Why this is a hard section**: two bad shapes recur in real use — ① **listing options and standing
+> still** (so the user has to say the same thing again); ② **quietly doing the irreversible things that
+> were the human's to decide**. Both share one root cause: **there was no line saying what must stop and
+> what must proceed**. This section's criterion (**reversible / in-repo / not an exemption**) *is* that
+> line — and it is **falsifiable** (D3), not "it depends".
+
 ### 4.1 Role contracts (three layers) and the role roster
 
 **A "role contract" has three layers; none may be skipped** (D4: never acknowledge only the most
