@@ -157,6 +157,126 @@ try {
         -Predicate { $b2.Exit -eq 0 -and $b2.Stdout -eq '' }
 }
 finally { if (-not $KeepSandbox) { Remove-Item -Recurse -Force $sbC -ErrorAction SilentlyContinue } }
+""
+
+# ================================================================ C · 规则—判据之间的机械检查
+# 这四格补的是台账 GAP-017 同族里【可机械检出】的四名。它们不起沙箱，直接查工作区。
+# 之所以放这里而不是新开脚本：它们与 A/B 同属「D3 负向用例先行」这一件事——
+# 判据的牙要有人定期去咬，规则的投影也要有人定期去对。
+"== C · 规则投影的机械检查（GAP-017 同族）=="
+
+function Get-BilingualPairs {
+    return @(
+        [pscustomobject]@{ Zh = 'AGENTS.md'; En = 'AGENTS.en.md'; Name = 'AGENTS' },
+        [pscustomobject]@{ Zh = 'README.md'; En = 'README.en.md'; Name = 'README' }
+    )
+}
+
+# --- C1 · 双语章节结构（GAP-022 的判据）
+# 单测这一格【不充分】：它只证明「节的数目与层级对上了」，证明不了「内容等价」。
+# 故 C2 必须一起跑 —— 这与 A1/A2 是同一个道理（结构绿 ≠ 内容绿）。
+foreach ($p in Get-BilingualPairs) {
+    $zhFile = Join-Path $RepoRoot $p.Zh
+    $enFile = Join-Path $RepoRoot $p.En
+    if (-not (Test-Path -LiteralPath $zhFile) -or -not (Test-Path -LiteralPath $enFile)) {
+        $script:Fail++; "  FAIL  C1 $($p.Name) 双语文件缺失"
+        continue
+    }
+    $zh = @(Select-String -LiteralPath $zhFile -Pattern '^#{2,3} ').Count
+    $en = @(Select-String -LiteralPath $enFile -Pattern '^#{2,3} ').Count
+    Assert-Cell -Name "C1 $($p.Name) 双语章节数相等（zh=$zh en=$en）" -Expect '两数相等' -Actual ([pscustomobject]@{ Exit = $zh; Stdout = $en }) `
+        -Predicate { $zh -eq $en }
+}
+
+# --- C2 · 判据词双语锚点（F7 建议的最小内容判据）
+# 为什么必须有它：C1 全绿时，把英文版 all three must hold 改成 any one may hold、
+# 并整条删掉硬边界③，C1 照样全绿（已实测）。**结构判据测不出语义反转。**
+# 本格检查几条【承载硬约束】的判据词在中英两侧各自在场。
+# ⚠️ 它只判【在场】，不判【次数相等】——两侧提及次数可以不同（英文可能换一种措辞说到同一件事）。
+#    这条限制是显式的：它把盲区从「任意语义反转」收窄到「判据词整体消失」，**不等于内容等价**。
+$anchors = @(
+    [pscustomobject]@{ Zh = 'AGENTS.md'; ZhWord = '三条同时成立';   En = 'AGENTS.en.md'; EnWord = 'all three must hold' },
+    [pscustomobject]@{ Zh = 'AGENTS.md'; ZhWord = '不构成豁免';     En = 'AGENTS.en.md'; EnWord = 'Not an exemption' },
+    [pscustomobject]@{ Zh = 'AGENTS.md'; ZhWord = '历史快照不改写'; En = 'AGENTS.en.md'; EnWord = 'historical snapshots are not rewritten' }
+)
+foreach ($a in $anchors) {
+    $zc = @(Select-String -LiteralPath (Join-Path $RepoRoot $a.Zh) -Pattern ([regex]::Escape($a.ZhWord)) -AllMatches).Count
+    $ec = @(Select-String -LiteralPath (Join-Path $RepoRoot $a.En) -Pattern ([regex]::Escape($a.EnWord)) -AllMatches).Count
+    Assert-Cell -Name "C2 判据词双语在场：「$($a.ZhWord)」/「$($a.EnWord)」（$zc/$ec）" -Expect '两侧均 >0' `
+        -Actual ([pscustomobject]@{ Exit = $zc; Stdout = $ec }) -Predicate { $zc -gt 0 -and $ec -gt 0 }
+}
+
+# --- C3 · Markdown 表格列数一致（GAP-017 同族第 ③ 名）
+# 为什么要有它：表格是规则的载体。删掉行首一个 `| ` 会让三列塌成两列，
+# 渲染时「判据」列被吞进「分路」列 —— 规则静默变形，两条 Stop 钩子均静默（已实测）。
+# 数法：把 \| （转义管道）先换成占位符，再按 | 切。
+$tableFiles = @(git -C $RepoRoot ls-files '*.md')
+$tableCount = 0; $tableBad = @()
+foreach ($f in $tableFiles) {
+    $fp = Join-Path $RepoRoot $f
+    if (-not (Test-Path -LiteralPath $fp)) { continue }
+    $lines = [System.IO.File]::ReadAllLines($fp)
+    $inTable = $false; $expect = 0
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $l = $lines[$i].Trim()
+        if ($l -match '^\|') {
+            $s = $l -replace '\\\|', '@ESC@'
+            $cells = ($s -split '\|').Count - 2
+            if (-not $inTable) { $inTable = $true; $expect = $cells; $tableCount++ }
+            elseif ($cells -ne $expect) { $tableBad += "$f`:$($i+1) 列数=$cells 期望=$expect" }
+        } else { $inTable = $false }
+    }
+}
+Assert-Cell -Name "C3 Markdown 表格列数一致（$tableCount 张表）" -Expect '异常行 = 0' `
+    -Actual ([pscustomobject]@{ Exit = $tableBad.Count; Stdout = ($tableBad -join '; ') }) -Predicate { $tableBad.Count -eq 0 }
+
+# --- C4 · git grep 的 -E 与 \| 同现（GAP-017 同族第 ⑤ 名）
+# -E 是 ERE，其中 \| 是【字面竖线】而非【或】 ⇒ 命令照抄跑出 0 行，而记录声称有命中。
+# 它不报错，只返回空。
+# 豁免：行内含 `grep-pipe-trap: 引用反例` 标记的，是【刻意展示的错误示例】，不算误用。
+$grepBad = @()
+foreach ($f in $tableFiles) {
+    $fp = Join-Path $RepoRoot $f
+    if (-not (Test-Path -LiteralPath $fp)) { continue }
+    $lines = [System.IO.File]::ReadAllLines($fp)
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $l = $lines[$i]
+        if ($l -match 'grep-pipe-trap') { continue }
+        foreach ($m in [regex]::Matches($l, 'git\s+grep[^\x60]*')) {
+            if ($m.Value -match '\-[a-zA-Z]*E' -and $m.Value -match '\\\|') {
+                $grepBad += "$f`:$($i+1)  $($m.Value.Trim())"
+            }
+        }
+    }
+}
+Assert-Cell -Name 'C4 git grep -E 与 \| 不同现' -Expect '误用 = 0' `
+    -Actual ([pscustomobject]@{ Exit = $grepBad.Count; Stdout = ($grepBad -join '; ') }) -Predicate { $grepBad.Count -eq 0 }
+
+# --- C5 · 编号引用完整性（防幻影引用）
+# 形状：文档里写了 GAP-099 / DEFER-099 之类，而台账里根本没有那一条。
+# 读者照着编号去台账查 —— 查不到，而他不会知道是编号错了还是自己看错了。
+# 本仓真实发生过一次（GAP-016 幻影路径），且总控本轮写文档时差点再犯一次（引用尚未登记的 DEFER-014）。
+# 数法：全仓 tracked 文件里出现的 GAP-NNN / DEFER-NNN，逐个到 docs/ledger.md 里找定义行。
+$ledgerPath = Join-Path $RepoRoot 'docs/ledger.md'
+$defined = @{}
+if (Test-Path -LiteralPath $ledgerPath) {
+    foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText($ledgerPath), '^\|\s*\*\*`?(GAP|DEFER)-(\d{3})`?\*\*', 'Multiline')) {
+        $defined["$($m.Groups[1].Value)-$($m.Groups[2].Value)"] = $true
+    }
+}
+$phantom = @()
+foreach ($f in $tableFiles) {
+    $fp = Join-Path $RepoRoot $f
+    if (-not (Test-Path -LiteralPath $fp)) { continue }
+    $txt = [System.IO.File]::ReadAllText($fp)
+    foreach ($m in [regex]::Matches($txt, '\b(GAP|DEFER)-(\d{3})\b')) {
+        $id = "$($m.Groups[1].Value)-$($m.Groups[2].Value)"
+        if (-not $defined.ContainsKey($id)) { $phantom += "$f → $id" }
+    }
+}
+$phantom = @($phantom | Sort-Object -Unique)
+Assert-Cell -Name "C5 编号引用完整（台账定义了 $($defined.Count) 条）" -Expect '幻影引用 = 0' `
+    -Actual ([pscustomobject]@{ Exit = $phantom.Count; Stdout = ($phantom -join '; ') }) -Predicate { $phantom.Count -eq 0 }
 
 # ================================================================ 小结
 ""
