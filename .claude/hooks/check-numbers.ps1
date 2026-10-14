@@ -46,7 +46,25 @@ function Invoke-GitChecked {
         # catch swallows into silence. This scoped EAP covers THAT case only -- it
         # does NOT cover "command not found" (CommandNotFoundException), which is
         # a statement-terminating error and is handled by the catch below.
-        $out = & { $ErrorActionPreference = 'Continue'; & $GitCall; $script:__gitExit = $LASTEXITCODE }
+        $out = & {
+            $ErrorActionPreference = 'Continue'
+            # GAP-013①: an ambient `GIT_DIR` HIJACKS every `git -C <repo>` below.
+            # `-C` picks the working directory, but `GIT_DIR` overrides repository
+            # discovery entirely -- so the guard would read ANOTHER repo's HEAD.
+            # Measured: with `GIT_DIR` pointing at a repo whose HEAD happened to
+            # match the page, the guard exits 0 SILENTLY and waves a stale page
+            # through. This guard resolves its own target explicitly, so an
+            # ambient GIT_DIR must not override it.
+            # ($env: is PROCESS-scoped, not scope-scoped -- hence save/restore.)
+            $savedGitDir = $env:GIT_DIR
+            $env:GIT_DIR = $null
+            try {
+                & $GitCall
+                $script:__gitExit = $LASTEXITCODE
+            } finally {
+                $env:GIT_DIR = $savedGitDir
+            }
+        }
     } catch {
         # A git that cannot even be launched lands here: CommandNotFoundException
         # (git not on PATH), or the ApplicationFailedException of a zero-byte /

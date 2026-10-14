@@ -171,6 +171,33 @@ try {
     $a7 = Invoke-Guard -Script (Join-Path $sbU '.claude/hooks/check-progress.ps1') -Sandbox $sbU
     Assert-Cell -Name 'A8 对照 同一沙箱补一次提交后 → 必须 block（证明 A7 是分支特定）' -Expect 'stdout 含 {"decision":"block"}' `
         -Actual $a7 -Predicate { $a7.Stdout -match '"decision"\s*:\s*"block"' }
+    # --- A9/A10 · GAP-013①：GIT_DIR 劫持（2026-10-14 实测并修复）
+    # 现象（修复前实测）：设 `GIT_DIR` 指向【另一个仓】，守卫会去读那个仓的 HEAD。
+    # 若其 HEAD 恰好与页面一致 → exit 0 【静默放行】一个陈旧页。
+    # 机制：`git -C <repo>` 指定工作目录，但 `GIT_DIR` 覆盖仓库发现 —— 两者不是一回事。
+    # 修法：`Invoke-GitChecked` 在调用前把 `GIT_DIR` 置空、调用后还原（`$env:` 是进程级，
+    # 故须 save/restore）。该 helper 是两个守卫的【唯一】git 入口，所以一处即覆盖全部。
+    $repoHeadNow = (git -C $RepoRoot rev-parse --short HEAD).Trim()   # 框架仓的 HEAD（≠ 沙箱的）
+    $sbHeadNow = (git -C $sbU rev-parse --short HEAD).Trim()
+    Assert-Cell -Name 'A9 前条件 沙箱 HEAD 与框架仓 HEAD 不同（否则本格无意义）' -Expect '两者不同' `
+        -Actual ([pscustomobject]@{ Exit = $sbHeadNow; Stdout = $repoHeadNow }) -Predicate { $sbHeadNow -ne $repoHeadNow }
+
+    # 页面写【框架仓】的 HEAD —— 对沙箱而言是陈旧的 ⇒ 必须 block
+    [System.IO.File]::WriteAllText((Join-Path $sbU 'project-progress.html'), "<html><body><div>head <b>$repoHeadNow</b></div></body></html>`n")
+
+    $t9 = & { $ErrorActionPreference='Continue'; $env:GIT_DIR=$null; powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $sbU '.claude/hooks/check-progress.ps1') 2>&1 }
+    $s9 = [string]::Join("`n", @($t9)).Trim()
+    Assert-Cell -Name 'A10 对照 无 GIT_DIR → block（正控）' -Expect 'stdout 含 {"decision":"block"}' `
+        -Actual ([pscustomobject]@{ Exit = 0; Stdout = $s9 }) -Predicate { $s9 -match '"decision"\s*:\s*"block"' }
+
+    # 显式 save/restore（不用 try/finally —— PS 5.1 不许它作表达式）
+    $savedGD = $env:GIT_DIR
+    $env:GIT_DIR = (Join-Path $RepoRoot '.git')
+    $gitDirProbe = & { $ErrorActionPreference='Continue'; powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $sbU '.claude/hooks/check-progress.ps1') 2>&1 }
+    $env:GIT_DIR = $savedGD
+    $s10 = [string]::Join("`n", @($gitDirProbe)).Trim()
+    Assert-Cell -Name 'A11 设 GIT_DIR 指向框架仓 → 仍必须 block（劫持已堵）' -Expect 'stdout 含 {"decision":"block"}' `
+        -Actual ([pscustomobject]@{ Exit = 0; Stdout = $s10 }) -Predicate { $s10 -match '"decision"\s*:\s*"block"' }
 }
 finally { if (-not $KeepSandbox) { Remove-Item -Recurse -Force $sbU -ErrorAction SilentlyContinue } }
 ""
