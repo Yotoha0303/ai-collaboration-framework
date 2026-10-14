@@ -362,6 +362,33 @@ When a subagent hits a decision point, it escalates to the orchestrator per its 
 > what must proceed**. This section's criterion (**reversible / in-repo / not an exemption**) *is* that
 > line — and it is **falsifiable** (D3), not "it depends".
 
+**Decision-reminder duty (after a task completes)**:
+
+**Problem**: decisions routed to ② are **registered in the ledger**, and the ledger is **not in the
+user's daily view** — so they get **recorded but not seen**, which still looks like "stuck".
+(Source: `目前已知的问题.md` item **`5-1`**.)
+
+**Duty**: **after every completed task** (especially when closing a multi-commit batch), the
+orchestrator **must explicitly remind** in its delivery reply:
+**"there are N items awaiting your decision — see the progress page, group ①"** —
+**give the count and the entry point**, rather than leaving the user to dig through the ledger.
+
+**Criteria (falsifiable)**:
+1. **Count is checkable**: N must equal the number of rows in the ledger's `pending-adjudication`
+   table whose status is "pending human adjudication".
+2. **Entry point is reachable**: the progress page's **group ① "what needs your decision"** must
+   **exist** and **list those N items** — guaranteed by `self-test`'s **`E1`** (the page covers every
+   identifier in the ledger).
+3. **Not reminding is a violation**: it is carried by **segment ⑤** of the §3 five-part protocol
+   (downstream sync list and open items) — **a missing segment means incomplete**, so forgetting the
+   reminder is not an oversight but an **incomplete delivery**.
+
+> ⚠️ **The current mechanical strength of this duty (stated honestly)**: **it is pure prose** — no
+> guard checks whether the reminder appeared in the reply. The smallest mechanisable form: **fold the
+> reminder into §3 segment ⑤** (which already lists open items), at which point validating the
+> presence of the five headings would cover this too. **That criterion is not built**, and falls
+> under the `GAP-017` family.
+
 **Task-location protocol (the first step before acting, `GAP-027`)**:
 
 **Problem**: the user has to **say the same instruction several times** before the AI gets it right.
