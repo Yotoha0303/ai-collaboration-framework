@@ -130,6 +130,51 @@ try {
 finally { if (-not $KeepSandbox) { Remove-Item -Recurse -Force $sbA -ErrorAction SilentlyContinue } }
 ""
 
+# ================================================================ A6-A8 · unborn 仓（GAP-012）
+# 【这两格断言的是"静默是对的"，不是一个待修的行为】——故附对照格，证明该静默是【分支特定】
+# 而非死代码。
+#
+# 为什么维持静默（2026-10-14 读代码后判定，【与台账 GAP-012 原写的解除条件相反】）：
+#   ① unborn 仓【没有 HEAD】⇒ 页面无法"落后"一个不存在的 HEAD ⇒【根本没有判据】。
+#      通知它 = 通知"判据不存在"——而那正是指针异常通道的职责，在此处价值更低。
+#   ② 代价落在最坏位置：新用户从零建仓时，页面尚未存在且无提交；若 unborn 变成通知，
+#      他们会在【第一次提交之前的每一轮】收到警告 —— 恰在入门时刻制造噪声。
+#   ③ 该状态是【过渡性且自愈】的：首次提交即消失。
+# ⇒ 台账原写的解除条件「显式识别 unborn 并 emit 提示而非静默」【提错了】；已在台账留痕更正。
+# 但仍【缺负向验证】（D3 要求）—— 这三格就是补它。
+$sbU = Join-Path $env:TEMP ('unborn-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+try {
+    New-Item -ItemType Directory -Path (Join-Path $sbU '.claude/hooks') -Force | Out-Null
+    Copy-Item -LiteralPath $ProgressGuard (Join-Path $sbU '.claude/hooks/check-progress.ps1')
+    [System.IO.File]::WriteAllText((Join-Path $sbU '.claude/progress-page.txt'), "project-progress.html`n")
+    git -C $sbU init -q          # 【只 init，不 commit】—— 这一格的全部意义所在
+
+    # A6 前条件：必须【真的】是 unborn，否则这一格测的不是它声称要测的东西
+    # ⚠️ 必须把 EAP 收进子作用域：unborn 下 git 把 `fatal: Needed a single revision`
+    # 写进 stderr，而脚本级 EAP=Stop 会把它升格为【终止异常】，把自测自己打断。
+    # 这正是本仓已记过两次的坑（GAP-013② / 本文件 Invoke-Guard 的注释）——
+    # 直接调 git 而不走 Invoke-Guard，就会复现它。
+    $unbornExit = & { $ErrorActionPreference = 'Continue'; git -C $sbU rev-parse --short HEAD 2>$null; $LASTEXITCODE }
+    Assert-Cell -Name 'A6 前条件 沙箱确实 unborn（rev-parse --short HEAD 非 0）' -Expect 'exit != 0' `
+        -Actual ([pscustomobject]@{ Exit = $unbornExit; Stdout = '' }) -Predicate { $unbornExit -ne 0 }
+
+    # A7 页面【存在】且写错 SHA —— 在 unborn 下仍须静默（维持；理由见上）
+    [System.IO.File]::WriteAllText((Join-Path $sbU 'project-progress.html'), "<html><body><div>head <b>0000000</b></div></body></html>`n")
+    $a6 = Invoke-Guard -Script (Join-Path $sbU '.claude/hooks/check-progress.ps1') -Sandbox $sbU
+    Assert-Cell -Name 'A7 unborn 仓 + 页面存在且写错 SHA → 静默（GAP-012 维持）' -Expect 'exit 0 且 stdout 空' `
+        -Actual $a6 -Predicate { $a6.Exit -eq 0 -and $a6.Stdout -eq '' }
+
+    # A8 对照：同一沙箱补一次提交后，同页同错 SHA 必须 block
+    # ⇒ 证明 A7 的静默是【分支特定】，不是"守卫已死"
+    git -C $sbU add -A
+    git -C $sbU -c user.email=a@b -c user.name=demo commit -q -m seed
+    $a7 = Invoke-Guard -Script (Join-Path $sbU '.claude/hooks/check-progress.ps1') -Sandbox $sbU
+    Assert-Cell -Name 'A8 对照 同一沙箱补一次提交后 → 必须 block（证明 A7 是分支特定）' -Expect 'stdout 含 {"decision":"block"}' `
+        -Actual $a7 -Predicate { $a7.Stdout -match '"decision"\s*:\s*"block"' }
+}
+finally { if (-not $KeepSandbox) { Remove-Item -Recurse -Force $sbU -ErrorAction SilentlyContinue } }
+""
+
 # ================================================================ B · 编号守卫
 # B1 正控（有牙）：两条分支各有同号不同文件 -> exit 1 且 stderr 报撞车
 # B2 对照：只有一个 docs/changes/ 条目、无跨分支同号 -> exit 1 且 stderr 报
