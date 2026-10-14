@@ -288,6 +288,56 @@ $phantom = @($phantom | Sort-Object -Unique)
 Assert-Cell -Name "C5 编号引用完整（台账定义了 $($defined.Count) 条）" -Expect '幻影引用 = 0' `
     -Actual ([pscustomobject]@{ Exit = $phantom.Count; Stdout = ($phantom -join '; ') }) -Predicate { $phantom.Count -eq 0 }
 
+# ================================================================ D · 双运行时对等（GAP-026 ②）
+# Claude Code 与 Antigravity 走两个入口、两套挂载。二者【刻意不完全相同】（见 D2），
+# 但"刻意不同"必须是【声明过的不同】——否则哪天有人为了"对齐"把 AGENTS.md 加进 GEMINI.md，
+# 就会撞上 24KB 截断，而那个静默失效正是 GAP-023 踩过的坑。
+"== D · 双运行时对等（GAP-026 ②）=="
+
+function Get-HeadingLines {
+    param([string]$Path)
+    $p = Join-Path $RepoRoot $Path
+    if (-not (Test-Path -LiteralPath $p)) { return @() }
+    return @(Select-String -LiteralPath $p -Pattern '^#{2,3} ' | ForEach-Object { $_.Line })
+}
+
+# --- D1 · 两入口章节数相等（GEMINI.md 自称"与 CLAUDE.md 对等、结构保持一致"）
+$zhIn = Get-HeadingLines 'CLAUDE.md'
+$enIn = Get-HeadingLines 'GEMINI.md'
+Assert-Cell -Name "D1 CLAUDE.md 与 GEMINI.md 章节数相等（$($zhIn.Count)/$($enIn.Count)）" -Expect '两数相等且 >0' `
+    -Actual ([pscustomobject]@{ Exit = $zhIn.Count; Stdout = $enIn.Count }) -Predicate { $zhIn.Count -eq $enIn.Count -and $zhIn.Count -gt 0 }
+
+# --- D2 · GEMINI.md 【刻意】不 @ 展开 AGENTS.md
+# 为什么断言"没有"：Antigravity 的 user_rules 单文件上限 24,000 B，内联展开 AGENTS.md（>50 KB）
+# 会把它静默截断到 24KB（GAP-023 实测）。故 AGENTS.md 走 user_rules + PreInvocation 分片续载。
+# 这一格防的是"为了对等而误加 @AGENTS" —— 那会让规则源静默丢一半。
+$gi = Join-Path $RepoRoot 'GEMINI.md'
+$inlineAgents = 0
+if (Test-Path -LiteralPath $gi) {
+    $inlineAgents = @(Select-String -LiteralPath $gi -Pattern '@\[?\s*AGENTS' -AllMatches).Count
+}
+Assert-Cell -Name 'D2 GEMINI.md 【不】@ 展开 AGENTS.md（防 24KB 截断）' -Expect '命中 = 0' `
+    -Actual ([pscustomobject]@{ Exit = $inlineAgents; Stdout = '' }) -Predicate { $inlineAgents -eq 0 }
+
+# --- D3 · 守卫用到的退出码 ⊆ stop-adapter 覆盖的退出码
+# stop-adapter.ps1 把 Claude Code 的协议翻成 Antigravity 的协议。它显式处理：
+#   stdout {"decision":"block"} -> continue（阻断）· exit 1 + stderr -> 透传 + allow（提示）· exit 0 -> allow
+# 若某守卫新增一个【未被覆盖】的退出码（如 exit 2），适配器会落到 allow 分支 ——
+# 即【新的失败模式被静默放行】。本格就是防这个。
+$adapterCovered = @(0, 1)
+$guardExits = @{}
+foreach ($g in @('check-progress.ps1', 'check-numbers.ps1')) {
+    $gp = Join-Path $RepoRoot ('.claude/hooks/' + $g)
+    if (-not (Test-Path -LiteralPath $gp)) { continue }
+    foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText($gp), 'exit\s+(\d+)')) {
+        $guardExits[[int]$m.Groups[1].Value] = $true
+    }
+}
+$uncovered = @($guardExits.Keys | Where-Object { $_ -notin $adapterCovered } | Sort-Object)
+Assert-Cell -Name "D3 守卫退出码 ⊆ adapter 覆盖（守卫用 $($guardExits.Keys -join '/')；覆盖 $($adapterCovered -join '/')）" `
+    -Expect '未覆盖 = 0' -Actual ([pscustomobject]@{ Exit = $uncovered.Count; Stdout = ($uncovered -join ',') }) `
+    -Predicate { $uncovered.Count -eq 0 }
+
 # ================================================================ 小结
 ""
 "---- 小结 ----"
