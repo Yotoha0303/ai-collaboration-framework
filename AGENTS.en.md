@@ -87,7 +87,7 @@ means the assets directory under the workspace root**.
 | **Progress page** (HTML) | The **human-facing projection** (status / metrics / gaps / timeline) | Every change | Orchestrator AI |
 | `"$REPO"/docs/changes/NNN-*.md` | Record of each code change (**write first, fill later**) | Every change | Orchestrator AI |
 | `"$REPO"/docs/adr/` | Architecture decision records | Medium | Human + orchestrator AI |
-| `"$REPO"/docs/` (the only ledger) | The **single** ledger of open items — **anything "not yet done" that is not here does not exist** | Every change | Orchestrator AI |
+| `"$REPO"/docs/` (the only ledger) | The **single** ledger of open items — **anything "not yet done" that is not here does not exist** (⚠️ **boundary see §6: user todos do not enter the ledger**) | Every change | Orchestrator AI |
 
 > **Three-way split of runtime state**: `record.md` records **what happened** (append, never
 > delete) · `memory.md` records **what the state is now** (overwrite) · the **progress page**
@@ -838,7 +838,13 @@ the turn** and feeds the reason back to the model, requiring the page to be upda
 > **Locations always substitute the `$REPO` resolved in §0.0; never hard-code a directory name**
 > (as in the table above).
 > **This repo uses the self-hosted layout** (the workspace root itself contains `.git`), so the
-> ledger lives in `docs/` under the workspace root — **inside the repository**, ✅ tracked per §5.>
+> ledger lives in `docs/` under the workspace root — **inside the repository**, ✅ tracked per §5.
+>
+> ⚠️ **Boundary: the user's todo list does *not* go into the ledger** (`我要做什么.txt`, a **local file, untracked**).
+> **One-line test**: is it "**something the user asks me to do**" (a todo / feature request), or "**something the framework itself has not done (`GAP-`) or has deliberately deferred (`DEFER-`)**"? Only the **latter** enters the ledger.
+> **Why (D4: one fact, one place)**: putting a user request in **both** the source file and the ledger creates **two copies** — and two copies guarantee one goes stale first.
+> **In-progress** user todos are tracked by the **source file + the progress page's group ②**; the ledger references one only when it **involves a gap or a deferral** (precedent: `DEFER-002/003/005` were **revoked** once their markers were removed — rationale in `docs/ledger-evidence/ledger-appendix-a.md`, `A.11`).
+> **⇒ Relation to the first row of the table above (they must be read together, or it reads as a contradiction)**: "anything 'not yet done' must be here" **covers the framework's own scope only**; **user requests are outside that scope** — their "existence" is guaranteed by the **source file**, **which is their single source of truth** (D4).>
 > ⚠️ **Ownership under multiple repos (carrying layout) must be made explicit** (`GAP-018`):
 > **each repo has its own ledger and its own identifier space** — the framework repo's ledger records
 > **the framework's own** open items; **a business repo's ledger records its own**.
