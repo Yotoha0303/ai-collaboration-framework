@@ -362,6 +362,38 @@ When a subagent hits a decision point, it escalates to the orchestrator per its 
 > what must proceed**. This section's criterion (**reversible / in-repo / not an exemption**) *is* that
 > line — and it is **falsifiable** (D3), not "it depends".
 
+**Task-location protocol (the first step before acting, `GAP-027`)**:
+
+**Problem**: the user has to **say the same instruction several times** before the AI gets it right.
+The root cause is **not execution capability but location** — the 2-D cognitive model in
+`prompts/AI总控.md` (8 system layers × 11 lifecycle stages) has **only the one line "use it to locate"**
+here, with **no "restate first, then act" step**, so **"did location happen at all" has no observable face**.
+
+**Protocol (three steps, none optional)**:
+
+1. **Restate**: **before acting**, restate in **one sentence** "**what you are asking me to do**" —
+   written **for the user**, not for yourself.
+2. **Place it**: name **which lifecycle stage × which system layer** it falls in (e.g. `02 development × code layer`),
+   and use §4.2 to decide **whether a cross-stage hand-off is required**.
+3. **Acknowledge**: **if the restatement is wrong, the user corrects it on the spot** — this step
+   **must complete before acting**.
+
+**Criterion (countable, hence falsifiable)**: **"corrected once"** — if the user **corrects your
+restatement**, a **location failure** has occurred; that count **must be reportable**, or the protocol
+is indistinguishable from not having written it.
+
+**Relation to §4.0**: **restating is not asking permission — it is declaring your understanding.**
+**Do not stop and wait** except when the restatement involves an **irreversible action** (§4.0 hard
+boundary 2) or the user has **explicitly asked you to hold off**. **Otherwise: restate, then start** —
+no extra confirmation round, or this protocol itself becomes "standing still waiting".
+
+> ⚠️ **The current mechanical strength of this protocol (stated honestly)**: **it is pure prose; no
+> guard checks whether a restatement happened** — the same fact as `docs/known-issues.md` §2 listing
+> §4.0 item by item as a "pure prompt constraint", and it falls under the `GAP-017` family.
+> The smallest mechanisable form: **make the restatement the first segment of the deliverable**
+> (mirroring the §3 five-part shape), at which point the `Stop` hook could verify its presence.
+> **That criterion is not built**, and is recorded as a residual of `GAP-027`.
+
 ### 4.1 Role contracts (three layers) and the role roster
 
 **A "role contract" has three layers; none may be skipped** (D4: never acknowledge only the most
