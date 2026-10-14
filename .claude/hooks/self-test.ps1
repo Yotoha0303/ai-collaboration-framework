@@ -197,17 +197,27 @@ try {
     #   而非重复。哪天 git 改了语义，这一格会开始 FAIL。）
     # 合并为【一次】spawn（逐个 spawn 要 5 次 powershell.exe 启动，实测显著抬升整轮耗时）。
     # 判据仍是"没有一个能改变读数"—— 两者皆设时若任一劫持，读数一样会失真（静默），本格照样 FAIL。
-    $envFamily = @('GIT_DIR','GIT_WORK_TREE','GIT_OBJECT_DIRECTORY','GIT_COMMON_DIR','GIT_INDEX_FILE')
+    # ⚠️ 取值必须【逐个按语义设】—— 2026-10-14 实测踩过：把五个变量【全设成同一个值】
+    # 时该组合【不劫持】，于是这一格对"修复被撤掉"不敏感、塌成死代码（注入验证时抓到的）。
+    # 下面这组值是【实测定为会劫持】的那组（GIT_WORK_TREE 指工作树根、GIT_OBJECT_DIRECTORY
+    # 指 objects 目录），故它能真正验到"清 GIT_DIR"这一步。
+    $envMap = [ordered]@{
+        'GIT_DIR'              = (Join-Path $RepoRoot '.git')
+        'GIT_WORK_TREE'        = $RepoRoot
+        'GIT_OBJECT_DIRECTORY' = (Join-Path $RepoRoot '.git/objects')
+        'GIT_COMMON_DIR'       = (Join-Path $RepoRoot '.git')
+        'GIT_INDEX_FILE'       = (Join-Path $RepoRoot '.git/index')
+    }
     $savedEV = @{}
-    foreach ($ev in $envFamily) {
+    foreach ($ev in $envMap.Keys) {
         $savedEV[$ev] = [Environment]::GetEnvironmentVariable($ev)
-        [Environment]::SetEnvironmentVariable($ev, (Join-Path $RepoRoot '.git'))
+        [Environment]::SetEnvironmentVariable($ev, $envMap[$ev])
     }
     try {
         $probe = & { $ErrorActionPreference='Continue'; powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $sbU '.claude/hooks/check-progress.ps1') 2>&1 }
         $sFam = [string]::Join("`n", @($probe)).Trim()
     } finally {
-        foreach ($ev in $envFamily) { [Environment]::SetEnvironmentVariable($ev, $savedEV[$ev]) }
+        foreach ($ev in $envMap.Keys) { [Environment]::SetEnvironmentVariable($ev, $savedEV[$ev]) }
     }
     Assert-Cell -Name 'A11 同族 git 环境变量（5 个）皆不得改变读数（单次 spawn）' -Expect 'stdout 含 {"decision":"block"}' `
         -Actual ([pscustomobject]@{ Exit = 0; Stdout = $sFam }) -Predicate { $sFam -match '"decision"\s*:\s*"block"' }
