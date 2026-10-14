@@ -580,12 +580,12 @@ not touch your working tree):
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/self-test.ps1
-# Expect: PASS = 21 / FAIL = 0, exit code 0
+# Expect: PASS = 23 / FAIL = 0, exit code 0
 ```
 
-It covers **A–E, 21 cells in five groups**: **A** progress-page guard 5 · **B** numbering guard 2 ·
+It covers **A–F, 23 cells in six groups**: **A** progress-page guard 5 · **B** numbering guard 2 ·
 **C** rule-projection 5 + 4 anchors · **D** dual-runtime parity 3 · **E** progress-page projection
-completeness 2. **Every cell's teeth were verified negatively** — swap the guard for an `exit 0`
+completeness 2 · **F** role read-only fence 2. **Every cell's teeth were verified negatively** — swap the guard for an `exit 0`
 stub, or inject a fault into each C/D/E cell, and **each one FAILs**.
 
 This document details only the **two A-group cells** below; the script and the measured readings

@@ -397,6 +397,50 @@ if (-not $pagePath -or -not (Test-Path -LiteralPath $pagePath)) {
     }
 }
 
+# ================================================================ F · 角色只读围栏（GAP-001 残余）
+# `tools:` 是声明，挂载才是事实 —— 但【声明本身】得先自洽，否则派发时才发现就晚了。
+# 本组守一条【安全不变量】与它的对偶：
+#   只读角色（description 标「只读」）= 机械只读 ⇒ tools 里【不得】有任何 shell
+#   写方角色                        = 能干活   ⇒ tools 里【应有】一个 shell
+# 两半都要，缺一半就会漏：
+#   只查「只读不得有 shell」→ 漏掉「写方没声明 shell」⇒ 派去干活却发现干不了（GAP-001 的原形态）
+#   只查「写方应有 shell」→ 漏掉「只读被加上 shell」⇒ 机械只读静默失效、无人报警
+# 「完全没有 tools: 声明」= 退回默认工具集（可能含写权限）⇒ 对只读角色是同一族风险。
+"== F · 角色只读围栏（GAP-001 残余）=="
+
+$shellNames = 'PowerShell|Bash|cmd|zsh|fish|sh'
+$agentDir = Join-Path $RepoRoot '.claude/agents'
+$roViolations = @()   # 只读角色却带 shell（或完全没声明）
+$rwViolations = @()   # 写方角色却没有 shell
+$roCount = 0; $rwCount = 0
+
+foreach ($f in @(Get-ChildItem -LiteralPath $agentDir -Filter '*.md' -ErrorAction SilentlyContinue | Sort-Object Name)) {
+    if ($f.Name -eq 'README.md') { continue }   # 文档不是角色，无 frontmatter
+    $txt = [System.IO.File]::ReadAllText($f.FullName)
+    $descMatch = [regex]::Match($txt, '(?m)^description:\s*(.+)$')
+    $toolsMatch = [regex]::Match($txt, '(?m)^tools:\s*(.+)$')
+    $isReadOnly = $descMatch.Success -and $descMatch.Groups[1].Value -match '只读'
+    $toolsLine = if ($toolsMatch.Success) { $toolsMatch.Groups[1].Value.Trim() } else { '' }
+    $hasShell = $toolsLine -match $shellNames
+
+    if ($isReadOnly) {
+        $roCount++
+        # 只读必须以『仅 Read / Grep / Glob』收口；带 shell 即破围栏；无声明同样不合格
+        if ($toolsLine -eq '') { $roViolations += "$($f.Name) — 无 tools: 声明（退回默认工具集）" }
+        elseif ($hasShell) { $roViolations += "$($f.Name) — 只读却带 shell：$toolsLine" }
+        elseif ($toolsLine -match 'Write|Edit') { $roViolations += "$($f.Name) — 只读却带 Write/Edit：$toolsLine" }
+    } else {
+        $rwCount++
+        if (-not $hasShell) { $rwViolations += "$($f.Name) — 写方却无 shell：$toolsLine" }
+    }
+}
+
+Assert-Cell -Name "F1 只读角色不含 shell/Write/Edit 且有声明（$roCount 个只读角色）" -Expect '违规 = 0' `
+    -Actual ([pscustomobject]@{ Exit = $roViolations.Count; Stdout = ($roViolations -join '; ') }) -Predicate { $roViolations.Count -eq 0 }
+
+Assert-Cell -Name "F2 写方角色已声明 shell（$rwCount 个写方角色）" -Expect '违规 = 0' `
+    -Actual ([pscustomobject]@{ Exit = $rwViolations.Count; Stdout = ($rwViolations -join '; ') }) -Predicate { $rwViolations.Count -eq 0 }
+
 # ================================================================ 小结
 ""
 "---- 小结 ----"

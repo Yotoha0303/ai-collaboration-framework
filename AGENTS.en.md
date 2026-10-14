@@ -436,10 +436,15 @@ authoritative **in the registry text** and is not repeated here.
 > dispatchable implementations. **Roles 11 / 12 are "domain roles"** (contract / frontend),
 > **beyond the baseline** — shipped with `main`, trimmed to a concrete project.
 > **Domain deepening is still open-ended** (e.g. other web3 roles) — see ledger `DEFER-006`.
-> ⚠️ They have **not yet been measured for tool mounting in this workspace** (`tools:` is a
-> **declaration**; mounting is the **fact** — see the end of this section). Before the first
-> dispatch, run the verification method in `.claude/agents/README.md`;
-> **do not claim "usable" before that measurement**.
+> ⚠️ **Tool mounting was measured on `2026-10-14`** (previously this line said "not yet measured").
+> `tools:` is a **declaration**; mounting is the **fact**. The measured results:
+> **read-only probe** (`falsifier`) reported `Read, Grep, Glob` and **refused to simulate execution
+> with read-only tools**; **writer probe** (`biz-strategist`) reported
+> `Read, Write, Edit, Grep, Glob, PowerShell` and **really ran** the command.
+> **The invariant is now mechanised**: `self-test.ps1` **`F1`/`F2`** — read-only roles must carry **no
+> shell / `Write` / `Edit`** and **must declare `tools:`** (no declaration = fall back to the default
+> tool set); writer roles **must declare a shell**. Both halves are needed: checking only one leaks
+> one family each.
 
 **Implementations shipped with this framework that are not registry roles** (they are
 **enforcers of the disciplines**, not among the registry's 12 business roles):
@@ -476,6 +481,7 @@ back **real stdout** for them to judge against.
 **After adding/changing a role's `tools`, measure its tool mounting**: `tools:` is a
 **declaration**, mounting is the **fact**, and a mismatch is **silent**; see
 `.claude/agents/README.md` (**no frontmatter**; it is a document, not a role).
+**This invariant is mechanised** (`2026-10-14`): `self-test.ps1`'s **`F1`/`F2`**.
 
 The three toolchains do not block one another: when dispatching a new feature stage by stage,
 **frontend and backend may start in parallel once the 01-stage interface is frozen**.
