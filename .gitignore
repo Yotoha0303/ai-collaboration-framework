@@ -1,8 +1,12 @@
 # AI 运行态：框架自己的记账，不入交付物（AGENTS.md §5）
 # 进度页名字会变——改名后请同步这一行（页名由 .claude/progress-page.txt 指定）
-memory.md
-record.md
-project-progress.html
+#
+# ⚠️ 规则一律带前导 `/`（锚定仓根）。不带 `/` 时 gitignore 语义是「**任意层级**的同名文件」——
+# 实测 `memory.md` 会连 `docs/memory.md`、`.claude/agents/memory.md` 一并忽略，
+# 而本条的意图是**仓根那一个**。判据与意图不符属 GAP-018 同族（依赖位置/措辞）。
+/memory.md
+/record.md
+/project-progress.html
 
 # 分工说明：本机的外部项目目录 project/ 刻意【不】写在这里——
 # 别人的 fork 里未必有它，写进来就成了"指不到东西的引用"。
