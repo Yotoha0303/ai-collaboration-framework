@@ -74,7 +74,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/self-test.ps1
 > **`C1` 全绿时，把 `all three must hold` 改成 `any one may hold` 并删掉整条硬边界，`C1` 照样全绿**——
 > 这正是 `C2` 存在的理由，也是「**结构绿 ≠ 内容绿**」的实测形态。
 
-> ⚠️ **为什么不挂进 `Stop` 钩子**：**实测约 12 s**（沙箱格 × 每格一次 `powershell.exe` 启动；C/D 组不启沙箱，几乎不耗时）。
+> ⚠️ **为什么不挂进 `Stop` 钩子**：**实测约 21 s**（沙箱格 × 每格一次 `powershell.exe` 启动；C/D/E/F 组不启沙箱，几乎不耗时）。
 > 现有两钩子超时 15s/20s，每轮再加 12s 不划算，慢机器上会顶到超时。
 > **⇒ 它是「改守卫 / 改规则后跑一次」的 Gate，不是每轮守卫。这是一个显式取舍**（`DEFER-014`）。
 > 细节见 [`guard-self-test.md`](guard-self-test.md)。

@@ -190,14 +190,27 @@ try {
     Assert-Cell -Name 'A10 对照 无 GIT_DIR → block（正控）' -Expect 'stdout 含 {"decision":"block"}' `
         -Actual ([pscustomobject]@{ Exit = 0; Stdout = $s9 }) -Predicate { $s9 -match '"decision"\s*:\s*"block"' }
 
-    # 显式 save/restore（不用 try/finally —— PS 5.1 不许它作表达式）
-    $savedGD = $env:GIT_DIR
-    $env:GIT_DIR = (Join-Path $RepoRoot '.git')
-    $gitDirProbe = & { $ErrorActionPreference='Continue'; powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $sbU '.claude/hooks/check-progress.ps1') 2>&1 }
-    $env:GIT_DIR = $savedGD
-    $s10 = [string]::Join("`n", @($gitDirProbe)).Trim()
-    Assert-Cell -Name 'A11 设 GIT_DIR 指向框架仓 → 仍必须 block（劫持已堵）' -Expect 'stdout 含 {"decision":"block"}' `
-        -Actual ([pscustomobject]@{ Exit = 0; Stdout = $s10 }) -Predicate { $s10 -match '"decision"\s*:\s*"block"' }
+    # A11 —— GIT_DIR 及【同族环境变量】皆不得改变读数。
+    # 2026-10-14 实测：只有 GIT_DIR 会劫持（其余四个【不】劫持）。但判据仍覆盖全族 ——
+    # 因为"哪个会劫持"是 git 的实现细节，不该由人记得；判据只该是"没有一个能改变读数"。
+    # （`Invoke-GitChecked` 只清 GIT_DIR；其余四个实测无害，故此格是对该取舍的【持续验证】，
+    #   而非重复。哪天 git 改了语义，这一格会开始 FAIL。）
+    # 合并为【一次】spawn（逐个 spawn 要 5 次 powershell.exe 启动，实测显著抬升整轮耗时）。
+    # 判据仍是"没有一个能改变读数"—— 两者皆设时若任一劫持，读数一样会失真（静默），本格照样 FAIL。
+    $envFamily = @('GIT_DIR','GIT_WORK_TREE','GIT_OBJECT_DIRECTORY','GIT_COMMON_DIR','GIT_INDEX_FILE')
+    $savedEV = @{}
+    foreach ($ev in $envFamily) {
+        $savedEV[$ev] = [Environment]::GetEnvironmentVariable($ev)
+        [Environment]::SetEnvironmentVariable($ev, (Join-Path $RepoRoot '.git'))
+    }
+    try {
+        $probe = & { $ErrorActionPreference='Continue'; powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $sbU '.claude/hooks/check-progress.ps1') 2>&1 }
+        $sFam = [string]::Join("`n", @($probe)).Trim()
+    } finally {
+        foreach ($ev in $envFamily) { [Environment]::SetEnvironmentVariable($ev, $savedEV[$ev]) }
+    }
+    Assert-Cell -Name 'A11 同族 git 环境变量（5 个）皆不得改变读数（单次 spawn）' -Expect 'stdout 含 {"decision":"block"}' `
+        -Actual ([pscustomobject]@{ Exit = 0; Stdout = $sFam }) -Predicate { $sFam -match '"decision"\s*:\s*"block"' }
 }
 finally { if (-not $KeepSandbox) { Remove-Item -Recurse -Force $sbU -ErrorAction SilentlyContinue } }
 ""

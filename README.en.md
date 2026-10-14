@@ -605,7 +605,7 @@ are in [`docs/guard-self-test.md`](docs/guard-self-test.md):
 > **`exit 0` + JSON on stdout** (`exit 1` is reserved for the two notice-only channels). A
 > criterion has to look at the **right channel** (D1).
 >
-> ⚠️ **Why the self-test is not wired into `Stop`**: it measures ~12 s, while the two existing hooks
+> ⚠️ **Why the self-test is not wired into `Stop`**: it measures ~21 s, while the two existing hooks
 > time out at 15s/20s — another 12 s per turn is not worth it, and a slow machine would hit the
 > timeout. **It is a gate you run "after changing a guard or a rule", not a per-turn guard.**
 > **This is an explicit trade-off (ledger `DEFER-014`), not an omission.**
