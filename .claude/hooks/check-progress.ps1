@@ -248,7 +248,27 @@ try {
     $content = Get-Content -LiteralPath $page -Raw
     # Case-insensitive: an uppercase SHA must still be COMPARED, not fall through
     # to the "no HEAD marker" silence (GAP-008).
-    $m = [regex]::Match($content, '<div>head <b>([0-9a-fA-F]{7,40})</b></div>')
+    #
+    # GAP-025 partial fix: the regex previously required the LITERAL
+    # `<div>head <b>SHA</b></div>`. ANY presentation change — adding a class
+    # attribute, an id, a style — made it fail to match, and a failed match takes
+    # the SILENT branch above. Measured: `head <b>deadbee</b>` blocks correctly,
+    # while `head <b class="v">deadbee</b>` exits 0 with NO output, i.e. a stale
+    # page is waved through. The guard goes blind rather than loud.
+    #
+    # So tolerate attributes on <div>, <b> and <i>, and whitespace around the SHA.
+    # This does NOT remove the coupling — the marker is still a presentation
+    # element, and a restructure into <span> would still blind it. It removes the
+    # CHEAPEST way to go blind, which is the one a styling tweak hits by accident.
+    #
+    # Considered and REJECTED: writing the SHA a second time into a machine-readable
+    # HTML comment and reading THAT. It would make the guard robust, but it creates
+    # two copies of one fact (the visible `head` and the comment), and per D4 two
+    # copies guarantee one goes stale first — with the guard then enforcing the
+    # STALE one. The real fix is not a second copy but a guard that does not parse
+    # presentation at all (e.g. content declared in front matter); that is a bigger
+    # change and is NOT done here. Residual stays OPEN and registered as GAP-025.
+    $m = [regex]::Match($content, '<div[^>]*>\s*head\s*<b[^>]*>\s*([0-9a-fA-F]{7,40})\s*</b[^>]*>\s*</div[^>]*>')
     if (-not $m.Success) { exit 0 }
 
     $recorded = $m.Groups[1].Value

@@ -112,11 +112,20 @@ try {
         -Predicate { $a3.Exit -eq 0 -and $a3.Stdout -eq '' }
     [System.IO.File]::WriteAllText((Join-Path $sbA '.claude/progress-page.txt'), "project-progress.html`n")
 
-    # A4 —— GAP-025 的失明格
+    # A4 —— GAP-025 的【已修】格：正则改为容忍 <b> 上的属性后，
+    # 加一个 class 不应再让它失明。（修复前这一格是静默的。）
     [System.IO.File]::WriteAllText($page, "<html><body><div>head <b class=""v"">0000000</b></div></body></html>`n")
     $a4 = Invoke-Guard -Script (Join-Path $sbA '.claude/hooks/check-progress.ps1') -Sandbox $sbA
-    Assert-Cell -Name 'A4 负控 <b> 加 class 属性 → 静默（GAP-025 会瞎）' -Expect 'exit 0 且 stdout 空' -Actual $a4 `
-        -Predicate { $a4.Exit -eq 0 -and $a4.Stdout -eq '' }
+    Assert-Cell -Name 'A4 <b> 加 class 属性 → 仍 block（GAP-025 已修此格）' -Expect 'stdout 含 {"decision":"block"}' -Actual $a4 `
+        -Predicate { $a4.Stdout -match '"decision"\s*:\s*"block"' }
+
+    # A5 —— GAP-025 的【残余】格，**故意断言"静默"**：把标记重构成 <span> 后守卫仍失明。
+    # 这一格的作用不是"验通过"，而是【把残余钉住】：只要它还静默，GAP-025 就没关；
+    # 哪天有人把守卫改成不解析展示层，这一格会开始 FAIL —— 那正是需要更新台账的信号。
+    [System.IO.File]::WriteAllText($page, "<html><body><div>head <span>0000000</span></div></body></html>`n")
+    $a5 = Invoke-Guard -Script (Join-Path $sbA '.claude/hooks/check-progress.ps1') -Sandbox $sbA
+    Assert-Cell -Name 'A5 重构成 <span> → 仍静默（GAP-025 残余，故意断言）' -Expect 'exit 0 且 stdout 空' -Actual $a5 `
+        -Predicate { $a5.Exit -eq 0 -and $a5.Stdout -eq '' }
 }
 finally { if (-not $KeepSandbox) { Remove-Item -Recurse -Force $sbA -ErrorAction SilentlyContinue } }
 ""
