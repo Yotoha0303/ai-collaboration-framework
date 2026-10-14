@@ -47,9 +47,9 @@ cd ../backend && go vet ./... && go test -race ./...
 故**守卫改动后若只看"它没吭声"，那什么也没证明**。
 
 ```powershell
-# 一键：19 格，沙箱在临时目录、自删、不碰工作树
+# 一键：21 格，沙箱在临时目录、自删、不碰工作树
 powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/self-test.ps1
-# 期望：PASS = 19 / FAIL = 0，退出码 0
+# 期望：PASS = 21 / FAIL = 0，退出码 0
 ```
 
 | 组 | 格 | 检查什么 |
@@ -58,14 +58,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/self-test.ps1
 | **B** 编号守卫 | `B1`–`B2` | 跨分支同号→`exit 1` 报撞车（正控）· 无 `docs/changes/`→静默（对照） |
 | **C** 规则投影（`GAP-017` 同族） | `C1`–`C5`+4 | ①双语章节数相等 · ②判据词双语在场（4 锚点）· ③Markdown 表格列数一致 · ④`git grep -E` 与 `\|` 不同现 · ⑤编号引用完整（无幻影 `GAP-`/`DEFER-`） |
 | **D** 双运行时对等（`GAP-026 ②`） | `D1`–`D3` | `CLAUDE.md` ↔ `GEMINI.md` 章节数相等 · **`GEMINI.md` 刻意【不】@ 展开 `AGENTS.md`**（防 24KB 截断）· **守卫退出码 ⊆ `stop-adapter` 覆盖**（未被覆盖的码会落到 `allow` ⇒ 新失败模式被静默放行） |
+| **E** 页面投影完整性 | `E1`–`E2` | 进度页**覆盖台账全部 `GAP-`/`DEFER-` 编号** · 页面的「用户待办」**条数与源文件一致**（该类已真实咬过两次） |
 
 **何时必须跑**：**任何一次改动 `.claude/hooks/*.ps1` · `.agents/hooks/*.ps1` · 双语文档 · `docs/ledger.md` 之后**
 （含改页名 —— 页名由 `.claude/progress-page.txt` 一行指定，改名就是改那一行）。
 
 **每一格的牙都做过负向验证**（D3：判据不能是死代码）：把 `check-progress.ps1` 换成 `exit 0` 空壳
-→ `A1` FAIL；对 `C1`–`C5`、`D1`–`D3` **逐格注入故障**（多插一节 / 判据词改写 / 表格断列 /
-`-E`+`\|` / 幻影编号 / 章节数不等 / 误加 `@AGENTS` / 未覆盖退出码）→ **各自 FAIL、退出码 1**；
-还原后 **19/19 PASS**。
+→ `A1` FAIL；对 `C1`–`C5`、`D1`–`D3`、`E1`–`E2` **逐格注入故障**（多插一节 / 判据词改写 / 表格断列 /
+`-E`+`\|` / 幻影编号 / 章节数不等 / 误加 `@AGENTS` / 未覆盖退出码 / 台账加号 / 页面删行）→
+**各自 FAIL、退出码 1**；还原后 **21/21 PASS**。
 
 > ⚠️ **`C2` 只判「判据词在场」，不判「次数相等」**——两侧提及次数可以不同（英文可能换措辞说到同一件事）。
 > **它不等于「内容等价」**：它把盲区从「任意语义反转」收窄到「判据词整体消失」。

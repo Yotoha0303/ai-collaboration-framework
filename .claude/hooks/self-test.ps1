@@ -338,6 +338,65 @@ Assert-Cell -Name "D3 守卫退出码 ⊆ adapter 覆盖（守卫用 $($guardExi
     -Expect '未覆盖 = 0' -Actual ([pscustomobject]@{ Exit = $uncovered.Count; Stdout = ($uncovered -join ',') }) `
     -Predicate { $uncovered.Count -eq 0 }
 
+# ================================================================ E · 进度页投影完整性
+# 台账是唯一事实源，进度页是它的【展示投影】。投影漏条 → 按页面执行任务的人【直接漏掉任务】，
+# 且【漏了不会响】（GAP-022 同族的失效形态）。
+# 本类已真实咬过两次：一次是源文件 `[目前不做]` 标记被移除，一次是源文件第 11 条被整条换掉。
+"== E · 进度页投影完整性 =="
+
+# 页名由指针文件一行指定（页名的唯一事实源）
+$ptrPath = Join-Path $RepoRoot '.claude/progress-page.txt'
+$pagePath = $null
+if (Test-Path -LiteralPath $ptrPath) {
+    $pn = (Get-Content -LiteralPath $ptrPath -Raw -ErrorAction SilentlyContinue)
+    if ($pn) { $pn = $pn.Trim() }
+    if ($pn) { $pagePath = Join-Path $RepoRoot $pn }
+}
+
+if (-not $pagePath -or -not (Test-Path -LiteralPath $pagePath)) {
+    # 页面不存在 = 尚未初始化，无判据可言（与守卫同口径，AGENTS.md §5）。**不算失败**。
+    "  SKIP  E 组：进度页不存在（尚未初始化），无判据可言"
+} else {
+    $pageTxt = [System.IO.File]::ReadAllText($pagePath)
+
+    # --- E1 · 页面覆盖全部 GAP-/DEFER- 编号
+    # 防的是：台账新增了编号，页面没跟上 —— 读者在页面上看不到它，以为没有。
+    $ledgerTxt = [System.IO.File]::ReadAllText((Join-Path $RepoRoot 'docs/ledger.md'))
+    $allIds = @()
+    foreach ($m in [regex]::Matches($ledgerTxt, '^\|\s*\*\*`?(GAP|DEFER)-(\d{3})`?\*\*', 'Multiline')) {
+        $allIds += "$($m.Groups[1].Value)-$($m.Groups[2].Value)"
+    }
+    $allIds = @($allIds | Sort-Object -Unique)
+    $pageIds = @()
+    foreach ($m in [regex]::Matches($pageTxt, '\b(GAP|DEFER)-\d{3}\b')) { $pageIds += $m.Value }
+    $missing = @($allIds | Where-Object { $_ -notin $pageIds })
+    Assert-Cell -Name "E1 页面覆盖全部编号（台账 $($allIds.Count) 条）" -Expect '未覆盖 = 0' `
+        -Actual ([pscustomobject]@{ Exit = $missing.Count; Stdout = ($missing -join ',') }) -Predicate { $missing.Count -eq 0 }
+
+    # --- E2 · 页面的「用户待办」条数与源文件一致
+    # 源文件不入库、无判据盯着它 —— 改动它不会有任何东西响。本格就是那个"盯着它"的东西。
+    $todoSrc = Join-Path $RepoRoot '我要做什么.txt'
+    if (Test-Path -LiteralPath $todoSrc) {
+        $srcIds = @()
+        foreach ($l in [System.IO.File]::ReadAllLines($todoSrc)) {
+            if ($l -match '^(\d+)、') { $srcIds += [int]$Matches[1] }
+        }
+        # 页面 ② 组表格：取 "id=todo" 到下一个 h2 之间的 <tr><td>NN</td>
+        $a = $pageTxt.IndexOf('id="todo"')
+        $b = if ($a -ge 0) { $pageTxt.IndexOf('<h2', $a + 1) } else { -1 }
+        $todoPageIds = @()
+        if ($a -ge 0 -and $b -gt $a) {
+            $seg = $pageTxt.Substring($a, $b - $a)
+            foreach ($m in [regex]::Matches($seg, '<tr><td>(?:<b>)?(\d+)(?:</b>)?</td>')) { $todoPageIds += [int]$m.Groups[1].Value }
+        }
+        $todoMissing = @($srcIds | Where-Object { $_ -notin $todoPageIds })
+        Assert-Cell -Name "E2 页面待办覆盖源文件（源 $($srcIds.Count) 条 / 页 $($todoPageIds.Count) 条）" -Expect '漏条 = 0' `
+            -Actual ([pscustomobject]@{ Exit = $todoMissing.Count; Stdout = ($todoMissing -join ',') }) -Predicate { $todoMissing.Count -eq 0 }
+    } else {
+        "  SKIP  E2：源文件 我要做什么.txt 不存在"
+    }
+}
+
 # ================================================================ 小结
 ""
 "---- 小结 ----"
