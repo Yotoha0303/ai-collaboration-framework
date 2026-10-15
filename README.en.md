@@ -643,8 +643,8 @@ Audited under D1 (only what is measured counts; no sugar-coating) and D4 (single
 
 | Known Problem Domain | Status Quo & Root Bottleneck (`git ls-files` measured baseline) | Ledger Tracking |
 | --- | --- | --- |
-| **1. Architectural skeleton is complete, but "physical bite" is still early-stage** | **92.3%** of tracked text assets (37 `.md` files · 6,023 lines · 506,018 B) are natural-language rules, while only **7.0%** (4 `.ps1` + 2 `.json` · 747 lines · 38,591 B) carry process-level mechanical interception. Aside from `PreInvocation` chunk injection and `Stop` guards, **ten-stage entry gates, the three-hop chain, "orchestrator never writes business code," concurrency ≤ 3, and the 5-part output protocol still rely on model compliance**, lacking `PreToolUse` / `pre-commit` physical blocks | [`GAP-024`](docs/ledger.md) · [`GAP-017`](docs/ledger.md) |
-| **2. Code carrier retains strong "script-glue" fragility** | All mechanical guards live in **4 PowerShell scripts (703 lines)** tightly coupled to Windows PowerShell 5.1 (hardcoded `powershell.exe`, heavy defensive glue for PS 5.1 `stderr`/`EAP`/`$LASTEXITCODE`/`IsInputRedirected` quirks); and the progress-page check scrapes HTML via regex `head\s*<b>...</b>` (any UI markup tweak triggers the silent fail-open branch), lacking a structured metadata contract and cross-platform automated test runner | [`GAP-025`](docs/ledger.md) |
+| **1. Architectural skeleton is complete, but "physical bite" is still early-stage** | **87.2%** of tracked text assets (38 `.md` files · 5,260 lines · 589,769 B) are natural-language rules, while only **12.2%** (5 `.ps1` + 2 `.json` · 1,332 lines · 82,861 B) carry process-level mechanical interception (measured `2026-10-15`; improved from `92.3% / 7.0%` on `2026-10-13`). Aside from `PreInvocation` chunk injection and `Stop` guards, **ten-stage entry gates, the three-hop chain, "orchestrator never writes business code," concurrency ≤ 3, and the 5-part output protocol still rely on model compliance**, lacking `PreToolUse` / `pre-commit` physical blocks | [`GAP-024`](docs/ledger.md) · [`GAP-017`](docs/ledger.md) |
+| **2. Code carrier retains strong "script-glue" fragility** | All mechanical guards live in **5 PowerShell scripts (1,288 lines)** tightly coupled to Windows PowerShell 5.1 (hardcoded `powershell.exe`, heavy defensive glue for PS 5.1 `stderr`/`EAP`/`$LASTEXITCODE`/`IsInputRedirected` quirks); and the progress-page check scrapes HTML via regex `head\s*<b>...</b>` (any UI markup tweak triggers the silent fail-open branch), lacking a structured metadata contract and cross-platform automated test runner | [`GAP-025`](docs/ledger.md) |
 | **3. Multi-runtime adaptation amplifies "mechanical consistency" verification difficulty** | Running dual stacks in parallel (Claude Code single-pass `@AGENTS.md` + declarative `tools:` vs Antigravity `24KB` truncation + `PreInvocation` dynamic slicing + `stop-adapter.ps1` protocol translation + imperative `define_subagent(enable_write_tools: false)`) doubles the verification matrix; and in Antigravity, read-only enforcement depends on the orchestrator passing `enable_write_tools: false` at call time without a `PreToolUse` guard | [`GAP-026`](docs/ledger.md) · [`GAP-023`](docs/ledger.md) |
 | **4. Registered deep-water gaps and human-adjudication backlog remain open** | Deep-water gaps touching "observational equivalence" and "trusted-base boundaries" (unverifiable read-only proxy execution `GAP-005`, missing-page/unborn silence indistinguishable from dead code `GAP-002`/`GAP-012`, `GIT_DIR` and smart-shim residue `GAP-013①`/`GAP-019`) plus 9 deferred / pending-human-decision items (`DEFER-001/004/006/007..014`) remain open | See table below & [`docs/ledger.md`](docs/ledger.md) |
 
@@ -658,7 +658,7 @@ items** picked from that ledger; they are also where outside discussion is most 
 | [`GAP-002`](docs/ledger.md) | The guard is **doubly silent**: one wrong pointer disables **both** "silent when the page is missing" and "the SHA criterion"; and "silent when missing" is **observationally equivalent to dead code** | **Mitigated** (a pointer that exists but yields no name → `exit 1` + stderr); the **residue is an accepted cost**: a pointer naming a **non-existent** page stays silent |
 | [`GAP-017`](docs/ledger.md) | §4.2 gives the **hard rule and the three-hop chain**, but **no guard checks whether the previous stage's hard assets exist** | So "missing one hop blocks the advance" currently **relies on good intentions** — the same family of defect as "a reminder gets ignored; a block does not" |
 | [`GAP-018`](docs/ledger.md) | Several rules **depend on one particular project's wording** and **misfire or lose meaning** under another layout (two fixed; the rest need a line-by-line sweep) | The criterion is "**depend on the design, not on the wording**" — but *which* rules still depend on wording can only be found by reading |
-| [`GAP-024`..`027`](docs/known-issues.md) | **Early physical bite (92.3% prose rules) · PowerShell script-glue & HTML regex fragility · Dual-runtime mechanical consistency lacks automated contract tests · Task-location failure has no carrier** | Needs interception shifted left from `Stop` to `PreToolUse`/Git Hooks, and script glue upgraded to cross-platform structured contracts and automated test suites (see [`docs/known-issues.md`](docs/known-issues.md)) |
+| [`GAP-024`..`027`](docs/known-issues.md) | **Early physical bite (87.2% prose rules) · PowerShell script-glue & HTML regex fragility · Dual-runtime mechanical consistency lacks automated contract tests · Task-location failure has no carrier** | Needs interception shifted left from `Stop` to `PreToolUse`/Git Hooks, and script glue upgraded to cross-platform structured contracts and automated test suites (see [`docs/known-issues.md`](docs/known-issues.md)) |
 
 **How to contribute** (read `AGENTS.md` first — it is the source of rules):
 
@@ -683,3 +683,31 @@ items** picked from that ledger; they are also where outside discussion is most 
 ## 14. License and language
 
 [MIT](LICENSE).
+---
+
+### Issues and Wiki
+
+**Issues**: <https://github.com/Yotoha0303/ai-collaboration-framework/issues>
+
+**What they are**: a **public projection of the ledger**, plus an entry point for **undrafted discussion**.
+The **single ledger** of open items is [`docs/ledger.md`](docs/ledger.md); an issue **does not copy the
+ledger body** — it carries only **the identifier + one line + a pointer to the ledger**
+(D4: one fact, one place).
+
+| Category | Where |
+| --- | --- |
+| **Framework gaps with an identifier** (`GAP-` / `DEFER-`) | an issue is a **public projection of the ledger**, easier to subscribe to and discuss |
+| **Undrafted ideas** (**no identifier yet**) | an issue — an identifier is assigned **only once the discussion settles** |
+| **Things only a human or a platform can do** (wiki setup / branch protection / platform secrets) | **not an issue** — see `AGENTS.md` §5 "pending-action documents" (the "who does it" column has only two values: human / platform) |
+
+**Wiki**: <https://github.com/Yotoha0303/ai-collaboration-framework/wiki>
+
+**What it is**: the "**how to use it**" written in a human-readable order — **the rules are not restated there**.
+**The wiki is not a source of rules**; where it disagrees with the repository, **the repository wins** (D4).
+
+| Page | Content |
+| --- | --- |
+| [Home](https://github.com/Yotoha0303/ai-collaboration-framework/wiki/Home) | Navigation · the three traps you will hit first · where everything lives |
+| [Getting Started](https://github.com/Yotoha0303/ai-collaboration-framework/wiki/Getting-Started) | Minimal bootstrap (three steps) → launch from the workspace root → start/adopt a project → **prove the gate has teeth yourself** → the two projections |
+| [Advanced Usage](https://github.com/Yotoha0303/ai-collaboration-framework/wiki/Advanced-Usage) | **What actually has teeth and what does not** · the self-test · the three-hop chain · decision routing · small commits · where to look when stuck |
+| [Production Examples](https://github.com/Yotoha0303/ai-collaboration-framework/wiki/Production-Examples) | Points to [`docs/reference-implementations.md`](docs/reference-implementations.md) (sourced from two real production repos) and the drift cases |

@@ -860,7 +860,32 @@ the turn** and feeds the reason back to the model, requiring the page to be upda
 > you are in**; **a cross-repo identifier reference is a phantom reference** (the trap measured in §8 —
 > a reader cannot open the file that number lives in).
 
-**New-number rule**: **continue the existing sequence**; never reuse a used number.
+### 6.2 Issues are a **public projection of the ledger**, not a second ledger
+
+> ⚠️ **Why this must be explicit**: the ledger lives in the repo and **outside readers will not dig through
+> it**; issues, by contrast, are **subscribable, discussable and labelable**. Both **track "things not yet
+> done"** ⇒ **without an explicit boundary this becomes two facts of different maturity** (D4).
+
+**The test (three mutually exclusive destinations)**:
+
+| Content | Where |
+| --- | --- |
+| **Framework gaps that already have an identifier** (`GAP-` / `DEFER-`) | **an issue is a public projection of the ledger** — it carries **only "identifier + one line + a pointer to the ledger"**, and **does not copy the ledger body** |
+| **Undrafted ideas** (**no identifier yet**) | **an issue** — an identifier is assigned **only once the discussion settles** (**an identifier is a registered fact, not a pending idea**) |
+| **Things only a human or a platform can do** | **not an issue** — see §5 "pending-action documents" (the "who does it" column has only two values: human / platform) |
+
+**Hard rule**: **discussion in the issue, facts in the ledger.** Once an issue settles, **write the
+conclusion back to the ledger or to the source of rules**; the issue keeps only the discussion trail.
+**The test**: every issue's identifier can be found in the ledger; **an issue whose identifier cannot be
+found is either still under discussion or belongs to the third category.**
+
+> ⚠️ **The two number spaces do not interfere**: issue numbers (GitHub `#N`) and ledger identifiers
+> (`GAP-` / `DEFER-`) are **two separate spaces** and **must not cross-reference** — cite an issue as
+> `issue #N`, cite the ledger as `GAP-0NN`. **This framework's identifier space recognises only the latter.**
+
+**The wiki is the same**: it is a **projection**; **the rules are not restated there**, and where it
+disagrees with `AGENTS.md` / `docs/`, **the repository wins** (D4). The wiki carries only **order and entry points**.
+
 **`git grep` the whole repo before registering** to confirm no collision (see D4).
 
 ---

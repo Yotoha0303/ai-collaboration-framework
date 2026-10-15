@@ -579,8 +579,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/self-test.ps1
 
 | 已知问题维度 | 现状与核心症结（`git ls-files` 实测口径） | 台账跟踪 |
 | --- | --- | --- |
-| **1. 架构骨架更完整，但「物理咬合力」仍处于早期** | 全仓文本资产中 **92.3%**（37 个 `.md` · 6,023 行 · 506,018 B）为自然语言规则，仅 **7.0%**（4 个 `.ps1` + 2 个 `.json` · 747 行 · 38,591 B）具备进程级机械拦截。除回合前分片续载与回合末 `Stop` 守卫外，**十环转段准入、三跳链必派、总控不写业务代码、单次并发 ≤ 3 与五段输出协议仍靠模型自觉**，缺 `PreToolUse` / `pre-commit` 前置物理阻断 | [`GAP-024`](docs/ledger.md) · [`GAP-017`](docs/ledger.md) |
-| **2. 代码载体依然具有强烈的「脚本胶水」属性** | 全部机械守卫承载于 **4 个 PowerShell 脚本（703 行）**，强耦合 Windows PowerShell 5.1（钩子写死 `powershell.exe`、大量代码为 PS 5.1 的 `stderr`/`EAP`/`$LASTEXITCODE`/`IsInputRedirected` 历史怪癖打补丁）；且进度页校验靠正则 `head\s*<b>...</b>` 抠取 HTML 字符串（UI 排版微调即落入「找不到标记静默放行」的失明分支），缺结构化元数据契约与跨平台一键自动化回归套件 | [`GAP-025`](docs/ledger.md) |
+| **1. 架构骨架更完整，但「物理咬合力」仍处于早期** | 全仓文本资产中 **87.2%**（38 个 `.md` · 5,260 行 · 589,769 B）为自然语言规则，仅 **12.2%**（5 个 `.ps1` + 2 个 `.json` · 1,332 行 · 82,861 B）具备进程级机械拦截（`2026-10-15` 实测；较 `2026-10-13` 的 `92.3% / 7.0%` 已有改善）。除回合前分片续载与回合末 `Stop` 守卫外，**十环转段准入、三跳链必派、总控不写业务代码、单次并发 ≤ 3 与五段输出协议仍靠模型自觉**，缺 `PreToolUse` / `pre-commit` 前置物理阻断 | [`GAP-024`](docs/ledger.md) · [`GAP-017`](docs/ledger.md) |
+| **2. 代码载体依然具有强烈的「脚本胶水」属性** | 全部机械守卫承载于 **5 个 PowerShell 脚本（1,288 行）**，强耦合 Windows PowerShell 5.1（钩子写死 `powershell.exe`、大量代码为 PS 5.1 的 `stderr`/`EAP`/`$LASTEXITCODE`/`IsInputRedirected` 历史怪癖打补丁）；且进度页校验靠正则 `head\s*<b>...</b>` 抠取 HTML 字符串（UI 排版微调即落入「找不到标记静默放行」的失明分支），缺结构化元数据契约与跨平台一键自动化回归套件 | [`GAP-025`](docs/ledger.md) |
 | **3. 多运行时适配放大了「机械一致性」的验证难度** | 双栈并行（Claude Code `@AGENTS.md` 单次展开 + 声明式 `tools:` vs Antigravity `24KB` 截断 + `PreInvocation` 动态分片 + `stop-adapter.ps1` 协议转接 + 命令式 `define_subagent(enable_write_tools: false)`）使验证矩阵翻倍；且 Antigravity 下只读角色的权限剥夺依赖总控调用时不漏传参数，缺 `PreToolUse` 前置强制与双端自动对拍工具 | [`GAP-026`](docs/ledger.md) · [`GAP-023`](docs/ledger.md) |
 | **4. 已登记的深水区缺口与待裁定积压依然待解** | 触及「观测等价性」与「可信基边界」的深水区缺口（如只读代跑真伪无判据 `GAP-005`、缺页/unborn 静默与死代码同形 `GAP-002`/`GAP-012`、`GIT_DIR` 与同源互斥 shim 残余 `GAP-013①`/`GAP-019`）及 9 项延期/待人工价值裁定项（`DEFER-001/004/006/007..014`）仍待解 | 见下方深水区表与 [`docs/ledger.md`](docs/ledger.md) |
 
@@ -594,7 +594,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/self-test.ps1
 | [`GAP-002`](docs/ledger.md) | 守卫**双静默**：指针一改错，「缺页静默」与「SHA 判据」**同时失效**；且「缺页静默」与「死代码」**在观测上等价** | **已缓解**（指针存在却读不出页名 → `exit 1` + stderr），**残余为已接受代价**：指针指向**不存在的页名**时仍静默 |
 | [`GAP-017`](docs/ledger.md) | §4.2 生命周期推进给了**硬规则与三跳链**，但**没有任何守卫检查"上一环的硬资产是否存在"** | 于是"缺一则不得进入下一阶段"目前**只靠自觉**——与「提醒会被忽略，阻断不会」同族的缺陷 |
 | [`GAP-018`](docs/ledger.md) | 有几处规则**依赖了某个具体项目的措辞**，换布局就**误伤或失义**（已改两处，其余须逐条排查） | 判据是「**依赖设计**，不依赖措辞」——但"哪几处还在依赖措辞"只能靠人读出来 |
-| [`GAP-024`..`027`](docs/known-issues.md) | **物理咬合力早期（92.3% 纯规则）· PowerShell 脚本胶水与 HTML 正则脆弱性 · 双运行时机械一致性缺自动对拍 · 任务定位失败无承载形式** | 需将拦截点从回合末 `Stop` 前移至 `PreToolUse`/Git Hooks，将脚本胶水升级为跨平台结构化契约与自动化回归套件（详见 [`docs/known-issues.md`](docs/known-issues.md)） |
+| [`GAP-024`..`027`](docs/known-issues.md) | **物理咬合力早期（87.2% 纯规则）· PowerShell 脚本胶水与 HTML 正则脆弱性 · 双运行时机械一致性缺自动对拍 · 任务定位失败无承载形式** | 需将拦截点从回合末 `Stop` 前移至 `PreToolUse`/Git Hooks，将脚本胶水升级为跨平台结构化契约与自动化回归套件（详见 [`docs/known-issues.md`](docs/known-issues.md)） |
 
 **怎么参与**（先读完 `AGENTS.md`，它才是规则源）：
 
@@ -625,3 +625,30 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/self-test.ps1
 | [`AGENTS.md`](AGENTS.md) | [`AGENTS.en.md`](AGENTS.en.md) |
 
 > 其余文档（`prompts/*`、`docs/ledger.md`）**暂只有中文**——属**主动延期**范围，见台账。
+---
+
+### 议题（Issues）与 Wiki
+
+**议题**：<https://github.com/Yotoha0303/ai-collaboration-framework/issues>
+
+**它是什么**：**台账的公开投影 + 未定稿讨论的入口**。
+本仓库的未竟事项**唯一台账是 [`docs/ledger.md`](docs/ledger.md)**；议题**不复制台账正文**，
+只放**编号 + 一句话 + 指向台账的指针**（D4：同一份事实不做两处副本）。
+
+| 类别 | 去哪 |
+| --- | --- |
+| **已有编号的框架缺口**（`GAP-` / `DEFER-`） | 议题 = **台账的公开投影**，便于订阅与讨论 |
+| **未定稿的想法**（**尚无编号**） | 议题 —— **讨论定稿后**才落 `GAP-`/`DEFER-` 编号 |
+| **只能由人或平台做的**（建 wiki / 分支保护 / 平台密钥） | **不是议题** —— 见 `AGENTS.md` §5「待执行指令类文档」（「谁做」只有「人 / 平台」两种取值） |
+
+**Wiki**：<https://github.com/Yotoha0303/ai-collaboration-framework/wiki>
+
+**它是什么**：把「**怎么用**」写成人能读懂的顺序——**规则本身不在那里复述**。
+**Wiki 不是规则源**，与仓库冲突时**一律以仓库为准**（D4）。
+
+| 页 | 内容 |
+| --- | --- |
+| [Home](https://github.com/Yotoha0303/ai-collaboration-framework/wiki/Home) | 导航 · 三条最容易踩的坑 · 仓库各入口 |
+| [简单入门](https://github.com/Yotoha0303/ai-collaboration-framework/wiki/Getting-Started) | 最小初始化三步 → 从工作区根启动 → 开始/接手项目 → **亲手验证那道闸有牙** → 两处投影 |
+| [熟练操作](https://github.com/Yotoha0303/ai-collaboration-framework/wiki/Advanced-Usage) | **哪些有牙哪些没有** · 一键自测 · 三跳链 · 决策分派 · 小步提交 · 遇问题去哪查 |
+| [生产项目参考](https://github.com/Yotoha0303/ai-collaboration-framework/wiki/Production-Examples) | 领到 [`docs/reference-implementations.md`](docs/reference-implementations.md)（两个真实生产仓的取材）与漂移案例 |
