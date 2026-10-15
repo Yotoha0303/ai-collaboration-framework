@@ -4,7 +4,7 @@
 
 [![Runtime: Claude Code](https://img.shields.io/badge/Runtime-Claude_Code-blue)](./CLAUDE.md)
 [![Runtime: Antigravity](https://img.shields.io/badge/Runtime-Antigravity-orange)](./GEMINI.md)
-![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
+![License: Apache 2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)
 ![Status: Experimental](https://img.shields.io/badge/status-experimental-orange.svg)
 ![Hooks: PowerShell · Bash](https://img.shields.io/badge/hooks-PowerShell%20%C2%B7%20Bash-4B8BBE.svg)
 
@@ -12,7 +12,7 @@
 > (SSOT)**; the English documents (`README.en.md` / `AGENTS.en.md`) are a **language projection**.
 > Where they disagree, **the Chinese version wins** (D4).
 >
-> **Status stated honestly**: **Experimental**, **no version tag** (`git tag` measures empty).
+> **Status stated honestly**: **Experimental**; **first version tag `v0.1.0`** (cut on `2026-10-15`, see Releases).
 > This repo is the **template** — having no artefacts for stages 04/06–10 is a **property of a
 > template**, **not a "failure"**; it is **still bound by disciplines D1–D4 and the mechanical
 > guards** (see §5).
@@ -299,7 +299,8 @@ AGENTS.en.md                     The same, in English (a language projection of 
 CLAUDE.md                        Claude Code thin entry point: import AGENTS.md + declare identity + self-check
 GEMINI.md                        Antigravity thin entry point: @[label](path) pre-loading + identity + self-check
 README.en.md                     This file
-LICENSE                          MIT
+LICENSE                          Apache-2.0
+NOTICE                           Copyright and attribution (Apache-2.0 §4(d))
 
 prompts/
   AI总控.md                      Orchestrator prompt (2-D model: 8 layers × 11 stages)
@@ -682,7 +683,17 @@ items** picked from that ledger; they are also where outside discussion is most 
 
 ## 14. License and language
 
-[MIT](LICENSE).
+[Apache License 2.0](LICENSE); see also [`NOTICE`](NOTICE) for copyright and attribution.
+
+> ⚠️ **Upgraded from MIT to Apache-2.0 on `2026-10-15`** (human instruction).
+> **Compared with MIT, Apache-2.0 adds two things**: ① an **express patent grant** (§3) — contributors
+> license their patents to you; ② a **patent-retaliation clause** — if you sue a contributor over
+> patents, your grant terminates. It also covers **trademarks** (§6, no trademark rights granted) and
+> requires **attribution / a NOTICE file** (§4). **The cost**: longer terms, and `LICENSE` + `NOTICE`
+> must accompany redistribution.
+> ⚠️ **Conflict with user todo item 4 (recorded honestly)**: `我要做什么.txt` item 4 still reads
+> "**using MIT open source**" — that wording now lags this instruction. **The source file is left
+> untouched** (it is the user's), and the divergence is recorded here.
 ---
 
 ### Issues and Wiki

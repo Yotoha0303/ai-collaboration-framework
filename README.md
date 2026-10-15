@@ -4,14 +4,14 @@
 
 [![Runtime: Claude Code](https://img.shields.io/badge/Runtime-Claude_Code-blue)](./CLAUDE.md)
 [![Runtime: Antigravity](https://img.shields.io/badge/Runtime-Antigravity-orange)](./GEMINI.md)
-![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
+![License: Apache 2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)
 ![Status: Experimental](https://img.shields.io/badge/status-experimental-orange.svg)
 ![Hooks: PowerShell · Bash](https://img.shields.io/badge/hooks-PowerShell%20%C2%B7%20Bash-4B8BBE.svg)
 
 > **文档基线**：本框架以**中文为单一事实源（SSOT）**，英文文档（`README.en.md` / `AGENTS.en.md`）
 > 是**语言投影**；两者不一致时**以中文为准**（D4）。
 >
-> **状态如实标注**：**Experimental**，**无版本标签**（`git tag` 实测为空）。
+> **状态如实标注**：**Experimental**；**首个版本标签 `v0.1.0`**（`2026-10-15` 打，见 Release）。
 > 本仓是**模板**——它对 04/06–10 环无对应物属**模板性质**，**不构成"未通过"**；
 > 但**仍受 D1–D4 四大纪律与机械守卫约束**（见 §五）。
 
@@ -284,7 +284,8 @@ AGENTS.en.md                     同上，英文版（同一规则源的语言�
 CLAUDE.md                        Claude Code 瘦入口：@导入 AGENTS.md + 声明身份 + 启动自检
 GEMINI.md                        Antigravity 瘦入口：@[label](path) 预加载 + 声明身份 + 启动自检
 README.en.md                     README 英文版
-LICENSE                          MIT
+LICENSE                          Apache-2.0
+NOTICE                           版权与归属声明（Apache-2.0 §4(d)）
 
 prompts/
   AI总控.md                      总控必备提示词（二维认知模型 8 层级 × 11 阶段）
@@ -612,8 +613,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/self-test.ps1
 
 ## 十四、许可与双语
 
-本框架以 **MIT** 许可开源（见 [`LICENSE`](LICENSE)）——可自由使用、修改、再分发与商用，
-**唯一要求是保留版权声明**；软件按"现状"提供，**不附带任何担保**。
+本框架以 **Apache License 2.0** 开源（见 [`LICENSE`](LICENSE)，版权与归属另见 [`NOTICE`](NOTICE)）。
+
+> ⚠️ **`2026-10-15` 由 MIT 升级为 Apache-2.0**（人工指令）。
+> **相比 MIT，Apache-2.0 多两件东西**：① **显式的专利授权**（§3）——贡献者就其专利给你授权；
+> ② **专利 retaliation 条款**——你若对贡献者发起专利诉讼，授权自动终止。
+> 另有**商标**（§6，本许可不授予商标权）与**署名/NOTICE**（§4）要求。
+> **代价**：条款更长、需随分发附 `LICENSE` 与 `NOTICE`。
+> ⚠️ **与用户待办第 4 条的冲突（如实登记）**：`我要做什么.txt` 第 4 条原文写「且**使用MIT开源**」——
+> **该条表述已落后于本次指令**。**不改动该源文件**（它是用户的），此处如实标注。
 
 **语言**：`README` 与 `AGENTS.md` 各有中英两份。
 **中文版是基线**；两者若不一致，**以中文版为准**——这是 D4（单一事实源）的落地：
