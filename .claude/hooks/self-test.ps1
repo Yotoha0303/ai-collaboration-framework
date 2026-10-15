@@ -304,6 +304,8 @@ $anchors = @(
     [pscustomobject]@{ Zh = 'AGENTS.md'; ZhWord = '历史快照不改写'; En = 'AGENTS.en.md'; EnWord = 'historical snapshots are not rewritten' },
     [pscustomobject]@{ Zh = 'AGENTS.md'; ZhWord = '任务定位协议';   En = 'AGENTS.en.md'; EnWord = 'Task-location protocol' }
     [pscustomobject]@{ Zh = 'AGENTS.md'; ZhWord = '决策提醒义务';   En = 'AGENTS.en.md'; EnWord = 'Decision-reminder duty' }
+    [pscustomobject]@{ Zh = 'AGENTS.md'; ZhWord = '询问项目位置';   En = 'AGENTS.en.md'; EnWord = 'ask the user where the project is' }
+    [pscustomobject]@{ Zh = 'AGENTS.md'; ZhWord = '落 ADR';         En = 'AGENTS.en.md'; EnWord = 'land the ADR' }
 )
 foreach ($a in $anchors) {
     $zc = @(Select-String -LiteralPath (Join-Path $RepoRoot $a.Zh) -Pattern ([regex]::Escape($a.ZhWord)) -AllMatches).Count
@@ -589,12 +591,12 @@ Assert-Cell -Name "F2 写方角色已声明 shell（$rwCount 个写方角色）"
 # **误报的判据比没有判据更糟**：它会教人忽略它（D3：判据必须测它声称要测的东西）。
 # 故【只认「总数」的固定说法】，不含历史/规划/分组：
 $totalPatterns = @(
-    '共\s*\*{0,2}(\d+)\s*\*{0,2}\s*格',        # 「共 33 格」
-    '一键[：:\s]\s*\*{0,2}(\d+)\s*\*{0,2}\s*格', # 「一键：33 格」
-    '\*{0,2}(\d+)\s*格\s*·\s*A–F',              # 「33 格 · A–F」
-    '六组\s*/\s*\*{0,2}(\d+)\s*\*{0,2}\s*格',    # 「六组 / 33 格」
+    '共\s*\*{0,2}(\d+)\s*\*{0,2}\s*格',        # 「共 35 格」
+    '一键[：:\s]\s*\*{0,2}(\d+)\s*\*{0,2}\s*格', # 「一键：35 格」
+    '\*{0,2}(\d+)\s*格\s*·\s*A–F',              # 「35 格 · A–F」
+    '六组\s*/\s*\*{0,2}(\d+)\s*\*{0,2}\s*格',    # 「六组 / 35 格」
     'A–F,\s*\*{0,2}(\d+)\s*cells',              # 英文
-    'PASS\s*=\s*(\d+)\s*/\s*FAIL'               # 「PASS = 33 / FAIL」
+    'PASS\s*=\s*(\d+)\s*/\s*FAIL'               # 「PASS = 35 / FAIL」
 )
 $foundTotals = @{}
 foreach ($f in @(git -C $RepoRoot ls-files '*.md')) {

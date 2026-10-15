@@ -64,7 +64,14 @@ coexist**, `GAP-018`).
 `git rev-parse --show-toplevel` **always** returns the framework repo, because each business project
 is **its own repo root** and therefore **stops** the upward search.
 
-**Below, `project/…` always means a path inside the repository**, and **`prompts/…` always
+> ⚠️ **If the memory does not record the project's location, you must ask the user** (user todo **`#18`**):
+> the "current state" section of `memory.md` should carry the **project / repository location**. **If it is
+> missing, or disagrees with what you measure** — do **not** substitute the default result of
+> `git rev-parse` for the user's intent, and do **not** silently proceed against some candidate directory;
+> **you must ask the user where the project is**, and write the answer back to `memory.md`.
+> **Why (same root as the zero-assumption principle in §0.2)**: a wrong location **does not raise an error** —
+> it only makes every subsequent step operate on the **wrong repository**. That is this project's
+> already-registered "**silently wrong**" family (§8 / `GAP-018`).**Below, `project/…` always means a path inside the repository**, and **`prompts/…` always
 means the assets directory under the workspace root**.
 
 > **Launch precondition (easy to get wrong; measured the hard way)**: Claude Code's three
@@ -959,6 +966,27 @@ This section lists drift **actually caught and fixed** when the framework was bu
 ---
 
 ## 9. Initialisation trigger
+
+### 9.0 Working on an **existing** project (user todo `#19`)
+
+**Trigger**: entering a business project that **already exists** (not starting from zero) — do **not**
+just start working. Follow these **five steps**:
+
+| Step | Action | Criterion / landing point |
+| --- | --- | --- |
+| **1** | **Measure the location**: `git rev-parse --show-toplevel` to establish which repo you are in; **if `memory.md` has no project location ⇒ ask the user per §0.0** | a wrong location **raises no error** — it is "silently wrong" |
+| **2** | **Judge the progress**: using the **software lifecycle and the project's existing documents** (`docs/planning/` · `docs/changes/` · `docs/adr/` · the ledger · `README` · issues), determine **which stage it is currently at**, and **record it** (in `memory.md` + the progress page) | **never infer from directory or file names** (D1); **the criterion is file content**, not its existence |
+| **3** | **Summarise and confirm requirements**: produce a **project overview** and **confirm the requirements** — **read them from the documents where possible**, and **ask the user** where they cannot be read; **never invent requirements** for the user (zero-assumption principle, §0.2) | confirming requirements is the **human's** prerogative, not the orchestrator's |
+| **4** | **Generate domain roles**: per the project's **domain business needs**, **create** the required agents under `.claude/agents/` and **register them in the registry** | same root as user todo **`#9`** / ledger **`DEFER-006`**; **never substitute** an existing role (§4.1) |
+| **5** | **Raise an ADR before developing**: assess against **software engineering norms / industry standards / the software lifecycle**, **land the ADR**, **then enter development** | **this is already a rule** — the stage-01 hard gate in §2 plus **D2 hard stage gates**; this section only demands it **actually be executed**, it **adds no new rule** (user todo `#20`) |
+
+> ⚠️ **The mechanical strength of this section (stated honestly)**: **step 5's "is there an ADR?" has no
+> guard today** — it relies on self-discipline, and falls under the `GAP-017` family; roadmap **`P2.2`**
+> (`PreToolUse` pre-flight validation of the `01-design` hard assets) is exactly what fills it.
+> **Step 2's "judge the progress" likewise has no criterion** — it requires **reading the documents and
+> judging**, and "did you read" currently has no mechanical face.
+
+### 9.1 Creating a project **from scratch**
 
 When the user types **"Start a new project: [project name and business summary]"**:
 1. Output the standard engineering directory skeleton (an SSOT system including `docs/adr` ·
