@@ -876,6 +876,15 @@ the turn** and feeds the reason back to the model, requiring the page to be upda
 
 **Hard rule**: **discussion in the issue, facts in the ledger.** Once an issue settles, **write the
 conclusion back to the ledger or to the source of rules**; the issue keeps only the discussion trail.
+
+> ⚠️ **A class-A issue must <u>not</u> put a volatile measured number in its title or body** — only a
+> **pointer** (to the ledger / `docs/known-issues.md`).
+> **The test**: if a number in an issue disagrees with what the repo measures ⇒ this rule is violated.
+> **Why**: **issues do not update themselves**, and an absolute reading **can go stale the same day** —
+> **this rule was violated twice on the day it was written**: `issue #4` said "常驻集 79.8 KiB"
+> (measured 81.3 KiB minutes later), and `issue #5` said "92.3% / 7.0%" (measured 87.2% / 12.2%).
+> **Both are now pointers only.** **What may be written**: **stable** identifiers (`GAP-0NN` / `DEFER-0NN`),
+> **qualitative** statements, and **dated** historical snapshots (explicitly marked with their capture time).
 **The test**: every issue's identifier can be found in the ledger; **an issue whose identifier cannot be
 found is either still under discussion or belongs to the third category.**
 
