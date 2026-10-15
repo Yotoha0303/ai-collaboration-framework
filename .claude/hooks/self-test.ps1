@@ -469,6 +469,26 @@ if (-not $pagePath -or -not (Test-Path -LiteralPath $pagePath)) {
     Assert-Cell -Name "E1 页面覆盖全部编号（台账 $($allIds.Count) 条）" -Expect '未覆盖 = 0' `
         -Actual ([pscustomobject]@{ Exit = $missing.Count; Stdout = ($missing -join ',') }) -Predicate { $missing.Count -eq 0 }
 
+    # --- E3 · 状态条数字 = 实测
+    # 为什么要有它（2026-10-15 补）：E1 查【编号覆盖】、E2 查【待办条数】，都【抓不到状态条过期】——
+    # 而状态条正是读者第一眼看的「当前是什么状态」。实测踩过：页面写「提交 88 / 入库 51」，
+    # 实测为 87 / 52（新增 docs/planning/ 后入库数变了，而「提交」是我按"加一"写的、没实测）。
+    # 这条把「head / 提交 / 入库」三项都钉到实测上——它们是 D1 所说"必须当场量的"那一类数字。
+    $barHead = [regex]::Match($pageTxt, '<div>head <b>([0-9a-fA-F]{7,40})</b>[^<]*</div>')
+    $barComm = [regex]::Match($pageTxt, '<div>提交 <b>(\d+)</b>[^<]*</div>')
+    $barFile = [regex]::Match($pageTxt, '<div>入库 <b>(\d+)</b>[^<]*</div>')
+    $realHead = (git -C $RepoRoot rev-parse --short HEAD).Trim()
+    $realComm = (git -C $RepoRoot rev-list --count HEAD).Trim()
+    $realFile = (git -C $RepoRoot ls-files | Measure-Object).Count
+    $barBad = @()
+    if (-not $barHead.Success) { $barBad += '状态条缺 head' }
+    elseif ($barHead.Groups[1].Value -ne $realHead) { $barBad += "head 页=$($barHead.Groups[1].Value) 实测=$realHead" }
+    if (-not $barComm.Success) { $barBad += '状态条缺 提交' }
+    elseif ([int]$barComm.Groups[1].Value -ne [int]$realComm) { $barBad += "提交 页=$($barComm.Groups[1].Value) 实测=$realComm" }
+    if (-not $barFile.Success) { $barBad += '状态条缺 入库' }
+    elseif ([int]$barFile.Groups[1].Value -ne [int]$realFile) { $barBad += "入库 页=$($barFile.Groups[1].Value) 实测=$realFile" }
+    Assert-Cell -Name "E3 状态条 head/提交/入库 = 实测" -Expect '不一致 = 0' `
+        -Actual ([pscustomobject]@{ Exit = $barBad.Count; Stdout = ($barBad -join '; ') }) -Predicate { $barBad.Count -eq 0 }
     # --- E2 · 页面的「用户待办」条数与源文件一致
     # 源文件不入库、无判据盯着它 —— 改动它不会有任何东西响。本格就是那个"盯着它"的东西。
     $todoSrc = Join-Path $RepoRoot '我要做什么.txt'
