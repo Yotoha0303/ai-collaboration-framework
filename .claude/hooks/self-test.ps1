@@ -489,6 +489,29 @@ if (-not $pagePath -or -not (Test-Path -LiteralPath $pagePath)) {
     elseif ([int]$barFile.Groups[1].Value -ne [int]$realFile) { $barBad += "入库 页=$($barFile.Groups[1].Value) 实测=$realFile" }
     Assert-Cell -Name "E3 状态条 head/提交/入库 = 实测" -Expect '不一致 = 0' `
         -Actual ([pscustomobject]@{ Exit = $barBad.Count; Stdout = ($barBad -join '; ') }) -Predicate { $barBad.Count -eq 0 }
+    # --- E4 · memory.md 的状态行数字 = 实测
+    # 为什么要有它（2026-10-15 补）：同一轮里我把「提交数 / 入库数」写错过三次
+    # （页面状态条 · memory 提交数 · memory 入库数）——全是"按加一写、没实测"。
+    # 页面那三项目前由 E3 钉住，而 memory.md 的同类数字【此前无任何东西在查】。
+    # memory.md 不存在时跳过（首次使用尚未初始化，AGENTS.md §5 同口径）。
+    $memPath = Join-Path $RepoRoot 'memory.md'
+    if (-not (Test-Path -LiteralPath $memPath)) {
+        "  SKIP  E4：memory.md 不存在（尚未初始化）"
+    } else {
+        $memTxt = [System.IO.File]::ReadAllText($memPath)
+        $memBad = @()
+        $mHead = [regex]::Match($memTxt, 'HEAD \*\*`([0-9a-fA-F]{7,40})`\*\*')
+        $mComm = [regex]::Match($memTxt, '\*\*(\d+)\*\* 个提交')
+        $mFile = [regex]::Match($memTxt, '入库 \*\*(\d+)\*\* 文件')
+        if (-not $mHead.Success) { $memBad += 'memory 状态行缺 HEAD' }
+        elseif ($mHead.Groups[1].Value -ne $realHead) { $memBad += "memory HEAD=$($mHead.Groups[1].Value) 实测=$realHead" }
+        if (-not $mComm.Success) { $memBad += 'memory 状态行缺 提交数' }
+        elseif ([int]$mComm.Groups[1].Value -ne [int]$realComm) { $memBad += "memory 提交=$($mComm.Groups[1].Value) 实测=$realComm" }
+        if (-not $mFile.Success) { $memBad += 'memory 状态行缺 入库数' }
+        elseif ([int]$mFile.Groups[1].Value -ne [int]$realFile) { $memBad += "memory 入库=$($mFile.Groups[1].Value) 实测=$realFile" }
+        Assert-Cell -Name 'E4 memory.md 状态行 HEAD/提交/入库 = 实测' -Expect '不一致 = 0' `
+            -Actual ([pscustomobject]@{ Exit = $memBad.Count; Stdout = ($memBad -join '; ') }) -Predicate { $memBad.Count -eq 0 }
+    }
     # --- E2 · 页面的「用户待办」条数与源文件一致
     # 源文件不入库、无判据盯着它 —— 改动它不会有任何东西响。本格就是那个"盯着它"的东西。
     $todoSrc = Join-Path $RepoRoot '我要做什么.txt'
@@ -556,6 +579,41 @@ Assert-Cell -Name "F1 只读角色不含 shell/Write/Edit 且有声明（$roCoun
 
 Assert-Cell -Name "F2 写方角色已声明 shell（$rwCount 个写方角色）" -Expect '违规 = 0' `
     -Actual ([pscustomobject]@{ Exit = $rwViolations.Count; Stdout = ($rwViolations -join '; ') }) -Predicate { $rwViolations.Count -eq 0 }
+
+
+# --- C6 · 全仓「格数总数」陈述一致（2026-10-15 补；**口径经两次收窄**）
+# 为什么要有它：格数被抄在 8 个文件里，**没有任何东西让它们同步** —— 同一轮里我因此错了 4 次。
+#
+# ⚠️ 第一版判据【是错的，如实记】：它扫全仓所有「NN 格」，于是把**合法数字**也报了 ——
+# 规划总数（45）· 历史对比（「方案原文称 29 格」）· 时间线（「增至 19 格」）· 分组内数（「A 11」）。
+# **误报的判据比没有判据更糟**：它会教人忽略它（D3：判据必须测它声称要测的东西）。
+# 故【只认「总数」的固定说法】，不含历史/规划/分组：
+$totalPatterns = @(
+    '共\s*\*{0,2}(\d+)\s*\*{0,2}\s*格',        # 「共 33 格」
+    '一键[：:\s]\s*\*{0,2}(\d+)\s*\*{0,2}\s*格', # 「一键：33 格」
+    '\*{0,2}(\d+)\s*格\s*·\s*A–F',              # 「33 格 · A–F」
+    '六组\s*/\s*\*{0,2}(\d+)\s*\*{0,2}\s*格',    # 「六组 / 33 格」
+    'A–F,\s*\*{0,2}(\d+)\s*cells',              # 英文
+    'PASS\s*=\s*(\d+)\s*/\s*FAIL'               # 「PASS = 33 / FAIL」
+)
+$foundTotals = @{}
+foreach ($f in @(git -C $RepoRoot ls-files '*.md')) {
+    # 排除 roadmap：它【合法地】含历史对比（『方案原文称 29 格』）与规划数（『三组共 13 格』）。
+    # 一个判据若把合法输入也报出来，就是在教人忽略它（D3）。
+    if ($f -like '*roadmap-production*') { continue }
+    $fp = Join-Path $RepoRoot $f
+    if (-not (Test-Path -LiteralPath $fp)) { continue }
+    $txt = [System.IO.File]::ReadAllText($fp)
+    foreach ($p in $totalPatterns) {
+        foreach ($m in [regex]::Matches($txt, $p)) { $foundTotals[[int]$m.Groups[1].Value] = $true }
+    }
+}
+$actualCells = $script:Pass + $script:Fail + 1   # +1 = C6 自己这一格（此刻尚未计入）
+$staleTotals = @($foundTotals.Keys | Where-Object { $_ -ne $actualCells } | Sort-Object)
+Assert-Cell -Name "C6 全仓格数【总数】陈述一致（实际 $actualCells；文中出现 $($foundTotals.Keys -join '/')）" `
+    -Expect "非 $actualCells 的总数陈述 = 0" `
+    -Actual ([pscustomobject]@{ Exit = $staleTotals.Count; Stdout = ($staleTotals -join ',') }) `
+    -Predicate { $staleTotals.Count -eq 0 }
 
 # ================================================================ 小结
 ""
