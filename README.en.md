@@ -327,6 +327,8 @@ launchers/
 docs/
   ledger.md                      The **only** ledger of open items (GAP/INC/DEFER).
                                  **Anything "not yet done" that is not in the ledger does not exist**
+   planning/                      The **plan anchor** (`AGENTS.md` §0.2): answers "**where to and why**" — multi-stage roadmap
+     roadmap-production.md         **Production-grade evolution roadmap**: four phases (structured state source → interception moved left → per-stage context routing → real-project traversal) + a self-test expansion plan (read on demand)
   ledger-evidence/               The ledger's **evidence appendices** (A–D: pre-registration
                                  searches / evidence transcripts / verification commands / guard
                                  measurements). **Not read by default — open on demand**; the
