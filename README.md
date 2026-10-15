@@ -296,7 +296,7 @@ prompts/
   settings.json                  Claude Code Stop hook 配置
   hooks/check-progress.ps1       进度页滞后守卫（fail-closed，见 §九）
   hooks/check-numbers.ps1        编号跨分支撞车守卫（见 §九）
-  hooks/self-test.ps1            **守卫与规则投影的一键自测（35 格）**——沙箱在临时目录、自删（见 §九）
+  hooks/self-test.ps1            **守卫与规则投影的一键自测（36 格）**——沙箱在临时目录、自删（见 §九）
   hooks/README.md                守卫实现细节（按需读）
   progress-page.txt              一行。进度页文件名的唯一事实源
   agents/*.md                    已实例化的角色（**12 类业务角色 + 3 类纪律执行者**）
@@ -526,10 +526,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/check-progress
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/self-test.ps1
-# 期望：PASS = 35 / FAIL = 0，退出码 0
+# 期望：PASS = 36 / FAIL = 0，退出码 0
 ```
 
-它覆盖 **A–F 六组共 35 格**：**A** 进度页守卫 11 · **B** 编号守卫 2 · **C** 规则投影 5+4 锚点 ·
+它覆盖 **A–F 六组共 36 格**：**A** 进度页守卫 11 · **B** 编号守卫 2 · **C** 规则投影 5+4 锚点 ·
 **D** 双运行时对等 3 · **E** 进度页投影完整性 2。**每一格的牙都做过负向验证**——
 把守卫换成 `exit 0` 空壳、或对 C/D/E 逐格注入故障，**各自都会 FAIL**。
 
@@ -579,8 +579,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/self-test.ps1
 
 | 已知问题维度 | 现状与核心症结（`git ls-files` 实测口径） | 台账跟踪 |
 | --- | --- | --- |
-| **1. 架构骨架更完整，但「物理咬合力」仍处于早期** | 全仓文本资产中 **87.2%**（38 个 `.md` · 5,260 行 · 589,769 B）为自然语言规则，仅 **12.2%**（5 个 `.ps1` + 2 个 `.json` · 1,332 行 · 82,861 B）具备进程级机械拦截（`2026-10-15` 实测；较 `2026-10-13` 的 `92.3% / 7.0%` 已有改善）。除回合前分片续载与回合末 `Stop` 守卫外，**十环转段准入、三跳链必派、总控不写业务代码、单次并发 ≤ 3 与五段输出协议仍靠模型自觉**，缺 `PreToolUse` / `pre-commit` 前置物理阻断 | [`GAP-024`](docs/ledger.md) · [`GAP-017`](docs/ledger.md) |
-| **2. 代码载体依然具有强烈的「脚本胶水」属性** | 全部机械守卫承载于 **5 个 PowerShell 脚本（1,288 行）**，强耦合 Windows PowerShell 5.1（钩子写死 `powershell.exe`、大量代码为 PS 5.1 的 `stderr`/`EAP`/`$LASTEXITCODE`/`IsInputRedirected` 历史怪癖打补丁）；且进度页校验靠正则 `head\s*<b>...</b>` 抠取 HTML 字符串（UI 排版微调即落入「找不到标记静默放行」的失明分支），缺结构化元数据契约与跨平台一键自动化回归套件 | [`GAP-025`](docs/ledger.md) |
+| **1. 架构骨架更完整，但「物理咬合力」仍处于早期** | 全仓文本资产中 **87.1%**（38 个 `.md` · 5,374 行 · 602,469 B）为自然语言规则，仅 **12.4%**（5 个 `.ps1` + 2 个 `.json` · 1363 行 · 85509 B）具备进程级机械拦截（`2026-10-15` 实测；较 `2026-10-13` 的 `92.3% / 7.0%` 已有改善）。除回合前分片续载与回合末 `Stop` 守卫外，**十环转段准入、三跳链必派、总控不写业务代码、单次并发 ≤ 3 与五段输出协议仍靠模型自觉**，缺 `PreToolUse` / `pre-commit` 前置物理阻断 | [`GAP-024`](docs/ledger.md) · [`GAP-017`](docs/ledger.md) |
+| **2. 代码载体依然具有强烈的「脚本胶水」属性** | 全部机械守卫承载于 **5 个 PowerShell 脚本（1,319 行）**，强耦合 Windows PowerShell 5.1（钩子写死 `powershell.exe`、大量代码为 PS 5.1 的 `stderr`/`EAP`/`$LASTEXITCODE`/`IsInputRedirected` 历史怪癖打补丁）；且进度页校验靠正则 `head\s*<b>...</b>` 抠取 HTML 字符串（UI 排版微调即落入「找不到标记静默放行」的失明分支），缺结构化元数据契约与跨平台一键自动化回归套件 | [`GAP-025`](docs/ledger.md) |
 | **3. 多运行时适配放大了「机械一致性」的验证难度** | 双栈并行（Claude Code `@AGENTS.md` 单次展开 + 声明式 `tools:` vs Antigravity `24KB` 截断 + `PreInvocation` 动态分片 + `stop-adapter.ps1` 协议转接 + 命令式 `define_subagent(enable_write_tools: false)`）使验证矩阵翻倍；且 Antigravity 下只读角色的权限剥夺依赖总控调用时不漏传参数，缺 `PreToolUse` 前置强制与双端自动对拍工具 | [`GAP-026`](docs/ledger.md) · [`GAP-023`](docs/ledger.md) |
 | **4. 已登记的深水区缺口与待裁定积压依然待解** | 触及「观测等价性」与「可信基边界」的深水区缺口（如只读代跑真伪无判据 `GAP-005`、缺页/unborn 静默与死代码同形 `GAP-002`/`GAP-012`、`GIT_DIR` 与同源互斥 shim 残余 `GAP-013①`/`GAP-019`）及 9 项延期/待人工价值裁定项（`DEFER-001/004/006/007..014`）仍待解 | 见下方深水区表与 [`docs/ledger.md`](docs/ledger.md) |
 
@@ -594,7 +594,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/self-test.ps1
 | [`GAP-002`](docs/ledger.md) | 守卫**双静默**：指针一改错，「缺页静默」与「SHA 判据」**同时失效**；且「缺页静默」与「死代码」**在观测上等价** | **已缓解**（指针存在却读不出页名 → `exit 1` + stderr），**残余为已接受代价**：指针指向**不存在的页名**时仍静默 |
 | [`GAP-017`](docs/ledger.md) | §4.2 生命周期推进给了**硬规则与三跳链**，但**没有任何守卫检查"上一环的硬资产是否存在"** | 于是"缺一则不得进入下一阶段"目前**只靠自觉**——与「提醒会被忽略，阻断不会」同族的缺陷 |
 | [`GAP-018`](docs/ledger.md) | 有几处规则**依赖了某个具体项目的措辞**，换布局就**误伤或失义**（已改两处，其余须逐条排查） | 判据是「**依赖设计**，不依赖措辞」——但"哪几处还在依赖措辞"只能靠人读出来 |
-| [`GAP-024`..`027`](docs/known-issues.md) | **物理咬合力早期（87.2% 纯规则）· PowerShell 脚本胶水与 HTML 正则脆弱性 · 双运行时机械一致性缺自动对拍 · 任务定位失败无承载形式** | 需将拦截点从回合末 `Stop` 前移至 `PreToolUse`/Git Hooks，将脚本胶水升级为跨平台结构化契约与自动化回归套件（详见 [`docs/known-issues.md`](docs/known-issues.md)） |
+| [`GAP-024`..`027`](docs/known-issues.md) | **物理咬合力早期（87.1% 纯规则）· PowerShell 脚本胶水与 HTML 正则脆弱性 · 双运行时机械一致性缺自动对拍 · 任务定位失败无承载形式** | 需将拦截点从回合末 `Stop` 前移至 `PreToolUse`/Git Hooks，将脚本胶水升级为跨平台结构化契约与自动化回归套件（详见 [`docs/known-issues.md`](docs/known-issues.md)） |
 
 **怎么参与**（先读完 `AGENTS.md`，它才是规则源）：
 

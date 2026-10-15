@@ -324,14 +324,16 @@ foreach ($f in $tableFiles) {
     $fp = Join-Path $RepoRoot $f
     if (-not (Test-Path -LiteralPath $fp)) { continue }
     $lines = [System.IO.File]::ReadAllLines($fp)
-    $inTable = $false; $expect = 0
+    $inTable = $false; $expCols = 0
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $l = $lines[$i].Trim()
         if ($l -match '^\|') {
             $s = $l -replace '\\\|', '@ESC@'
             $cells = ($s -split '\|').Count - 2
-            if (-not $inTable) { $inTable = $true; $expect = $cells; $tableCount++ }
-            elseif ($cells -ne $expect) { $tableBad += "$f`:$($i+1) 列数=$cells 期望=$expect" }
+            # ⚠️ 用 $expCols 而非 $expect —— `$Expect` 是 Assert-Cell 的参数名，
+            # 二者【仅靠大小写区分】，属 PowerShell 大小写不敏感下的静默别名风险（见 C7）。
+            if (-not $inTable) { $inTable = $true; $expCols = $cells; $tableCount++ }
+            elseif ($cells -ne $expCols) { $tableBad += "$f`:$($i+1) 列数=$cells 期望=$expCols" }
         } else { $inTable = $false }
     }
 }
@@ -583,6 +585,35 @@ Assert-Cell -Name "F2 写方角色已声明 shell（$rwCount 个写方角色）"
     -Actual ([pscustomobject]@{ Exit = $rwViolations.Count; Stdout = ($rwViolations -join '; ') }) -Predicate { $rwViolations.Count -eq 0 }
 
 
+# --- C7 · `.ps1` 里不得有「仅靠大小写区分」的变量名（2026-10-15 补）
+# 为什么要有它：**PowerShell 的变量名大小写不敏感** —— `$h` 与 `$H` 是**同一个变量**。
+# 我本人就在这一条上出过事故：写同步脚本时用 `$h` 存页面内容、`$H` 存 HEAD sha，
+# 于是「HEAD sha」被页面内容覆盖，**整页被注入自身**，`memory.md` 同样被污染。
+# 同类还有 `$c`/`$C`（CRLF 计数 vs 提交数）· `$f`/`$F`（文件名 vs 入库数）。
+#
+# ⚠️ **本格的诚实边界**：它只扫**仓库内入库的 `.ps1`**。**我那次事故的脚本是临时脚本**
+# （在 `.git/` 下、不入库）—— **本格抓不到它**。故本格是**对同一族的预防**，不是那次事故的修复。
+# 预防的价值：任何人往后写进仓库的钩子脚本，都不会再踩这个静默别名坑。
+$V_CASE_HITS = @()
+foreach ($V_F in @(git -C $RepoRoot ls-files '*.ps1')) {
+    $V_P = Join-Path $RepoRoot $V_F
+    if (-not (Test-Path -LiteralPath $V_P)) { continue }
+    $V_T = [System.IO.File]::ReadAllText($V_P)
+    # 只扫【非注释行】—— 注释里引用 `$h`/`$H` 作举例，不是变量使用（本格第一版即栽在此）。
+    # 且排除【作用域前缀】（`$script:` / `$env:` …）—— 那是 `$<scope>:`，不是名为 scope 的变量。
+    $V_CODE = ([System.IO.File]::ReadAllLines($V_P) |
+        Where-Object { -not $_.TrimStart().StartsWith('#') }) -join "`n"
+    $V_NAMES = [regex]::Matches($V_CODE, '\$([A-Za-z_][A-Za-z0-9_]*)\b(?!:)') |
+        ForEach-Object { $_.Groups[1].Value } | Sort-Object -CaseSensitive -Unique
+    # ⚠️ 必须 -CaseSensitive：Sort-Object -Unique 默认【大小写不敏感】，会把 $EAP_TEST 与 $eap_test 折叠成一个 ⇒ 冲突组永远为 0（本格第一版即栽在此，实测抓到）。
+    # 同族先例：check-numbers.ps1 用 HashSet + StringComparer::Ordinal（GAP-019 的修复）。
+    foreach ($V_G in ($V_NAMES | Group-Object { $_.ToLower() } | Where-Object { $_.Count -gt 1 })) {
+        $V_CASE_HITS += "$V_F : " + (($V_G.Group | Sort-Object) -join ' / ')
+    }
+}
+Assert-Cell -Name 'C7 .ps1 无「仅靠大小写区分」的变量名（PowerShell 大小写不敏感）' -Expect '冲突 = 0' `
+    -Actual ([pscustomobject]@{ Exit = $V_CASE_HITS.Count; Stdout = ($V_CASE_HITS -join '; ') }) `
+    -Predicate { $V_CASE_HITS.Count -eq 0 }
 # --- C6 · 全仓「格数总数」陈述一致（2026-10-15 补；**口径经两次收窄**）
 # 为什么要有它：格数被抄在 8 个文件里，**没有任何东西让它们同步** —— 同一轮里我因此错了 4 次。
 #
