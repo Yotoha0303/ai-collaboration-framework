@@ -47,9 +47,9 @@ cd ../backend && go vet ./... && go test -race ./...
 故**守卫改动后若只看"它没吭声"，那什么也没证明**。
 
 ```powershell
-# 一键：36 格，沙箱在临时目录、自删、不碰工作树
+# 一键：38 格，沙箱在临时目录、自删、不碰工作树
 powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/self-test.ps1
-# 期望：PASS = 36 / FAIL = 0，退出码 0
+# 期望：PASS = 38 / FAIL = 0，退出码 0
 ```
 
 | 组 | 格 | 检查什么 |

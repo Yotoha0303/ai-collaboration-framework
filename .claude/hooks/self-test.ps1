@@ -306,6 +306,8 @@ $anchors = @(
     [pscustomobject]@{ Zh = 'AGENTS.md'; ZhWord = '决策提醒义务';   En = 'AGENTS.en.md'; EnWord = 'Decision-reminder duty' }
     [pscustomobject]@{ Zh = 'AGENTS.md'; ZhWord = '询问项目位置';   En = 'AGENTS.en.md'; EnWord = 'ask the user where the project is' }
     [pscustomobject]@{ Zh = 'AGENTS.md'; ZhWord = '落 ADR';         En = 'AGENTS.en.md'; EnWord = 'land the ADR' }
+    [pscustomobject]@{ Zh = 'AGENTS.md'; ZhWord = '输入通道';       En = 'AGENTS.en.md'; EnWord = 'channel for user intent' }
+    [pscustomobject]@{ Zh = 'AGENTS.md'; ZhWord = '可复用 ≠ 可携带'; En = 'AGENTS.en.md'; EnWord = 'Reusable ≠ portable' }
 )
 foreach ($a in $anchors) {
     $zc = @(Select-String -LiteralPath (Join-Path $RepoRoot $a.Zh) -Pattern ([regex]::Escape($a.ZhWord)) -AllMatches).Count

@@ -847,6 +847,19 @@ the turn** and feeds the reason back to the model, requiring the page to be upda
 > **This repo uses the self-hosted layout** (the workspace root itself contains `.git`), so the
 > ledger lives in `docs/` under the workspace root — **inside the repository**, ✅ tracked per §5.
 >
+> ⚠️ **The channel for user intent** (clarified `2026-10-15`; this **replaces** the earlier reading that framed it as
+> "non-authoritative input"): **the form of user intent is not fixed** — conversation / a file / spoken words all count.
+> `我要做什么.txt` is **one carrier in use on this project**: a list where the user records **what the framework
+> needs improved or added**, so the user can say it **in one pass** instead of one item at a time.
+> **The test**:
+> - **if it exists ⇒ the orchestrator must read it and check it against the ledger / progress page** — it is
+>   **useful input**, **not ignorable background**;
+> - **if it does not exist ⇒ the framework is unaffected** (`self-test`'s `E2` has an explicit `SKIP` branch, measured).
+> **It is an "input channel", not a "required file"** — those are different things: **the former serves me;
+> only the latter constrains you.** ⚠️ It is **untracked** (excluded by the local `info/exclude`), so it
+> **must not be inherited by the next project** (see §9.1, "reusable ≠ portable").
+
+> ⚠️ **Boundary: the user's todo list does *not* go into the ledger** (`我要做什么.txt`, a **local file, untracked**).
 > ⚠️ **Boundary: the user's todo list does *not* go into the ledger** (`我要做什么.txt`, a **local file, untracked**).
 > **One-line test**: is it "**something the user asks me to do**" (a todo / feature request), or "**something the framework itself has not done (`GAP-`) or has deliberately deferred (`DEFER-`)**"? Only the **latter** enters the ledger.
 > **Why (D4: one fact, one place)**: putting a user request in **both** the source file and the ledger creates **two copies** — and two copies guarantee one goes stale first.
@@ -1021,6 +1034,23 @@ just start working. Follow these **five steps**:
 > judging**, and "did you read" currently has no mechanical face.
 
 ### 9.1 Creating a project **from scratch**
+
+> ⚠️ **Reusable ≠ portable** (added `2026-10-15`): **when creating a project from scratch, do not carry over the
+> current workspace's runtime state or personal files.** The following **belong to this project**, are **not part
+> of the framework**, and **must not** be copied / initialised into the new project:
+> - **Runtime state**: `record.md` · `memory.md` · the progress page
+> - **Personal input**: `我要做什么.txt` · `目前已知的问题.md` · `README修改建议.md` · `架构级改进方案建议.md` and the like
+> - **Local exclude rules**: the *contents* of `.git/info/exclude` (a new project writes its own)
+>
+> **The test (one line)**: **can every item in the new project answer "did this come from the framework, or from
+> the previous project?"** Carry only the **framework source** (`AGENTS.md` · `.claude/` · `launchers/` ·
+> template documents) — **never the previous project's state or requests.**
+>
+> **Why**: carrying them over makes the new project **inherit a todo list that is not its own** — and **every item
+> on it was already disposed of by the previous project** (deferred / revoked / done). In the new project they are
+> **all noise**, and the new user has no idea where they came from.
+> **Directly relevant to 待办 1** (one-command adoption + auto-nested workspace, issue #27): that feature **must**
+> carry this boundary, or "one-command adoption" becomes "**one-command inheritance of someone else's backlog**".
 
 When the user types **"Start a new project: [project name and business summary]"**:
 1. Output the standard engineering directory skeleton (an SSOT system including `docs/adr` ·
