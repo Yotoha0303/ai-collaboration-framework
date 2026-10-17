@@ -1,10 +1,19 @@
-# Stop-hook guard: the progress page must not lag the repository.
+# Stop-hook guard: the progress page must not lag the MAINLINE.
 #
 # The page carries the HEAD it was built from in its status bar
-# (`<div>head <b>…</b></div>`). If that no longer matches the repo's HEAD, the
+# (`<div>head <b>…</b></div>`). If that no longer matches the MAINLINE, the
 # page describes a state that no longer exists — the "two facts at different
 # maturities" problem the project's own discipline (D4) forbids, sitting outside
 # the repo where the ledger cannot catch it.
+#
+# Which commit is "the mainline"? GAP-031: NOT the checked-out HEAD. A progress
+# page is a stakeholder-facing fact about the trunk; on any feature branch the
+# checked-out HEAD is a private, short-lived fact. Comparing against HEAD made
+# the guard cry "lagging" on every branch whose tip differed from the page's
+# (correct) mainline SHA — measured twice in a real workspace, and reproducible
+# with NO commit on the new branch at all, as soon as the trunk moves on.
+# The three-level resolution (remote default branch -> local main -> HEAD as an
+# explicit fallback) is documented where it is implemented, further down.
 #
 # Exit 0 with no output -> allow the turn to end.
 # Exit 0 with JSON      -> `decision:block` feeds the reason back to the model,
@@ -62,7 +71,9 @@
 #
 # Silent cases on purpose: no git HEAD, no HEAD marker in the page (the page was
 # restructured beyond recognition; a false alarm on every stop is worse than
-# saying nothing), and NO page at all.
+# saying nothing), and NO page at all. GAP-031 adds one more of the same kind:
+# no MAINLINE can be resolved at all (no `origin/HEAD`, no local `main`, and no
+# commit on HEAD either) — same unborn landing as GAP-012.
 #
 # A MISSING page is silent by human decision (AGENTS.md section 5, "initialise on
 # first use, no report needed"): the premise is "the page EXISTS and must not
@@ -95,6 +106,17 @@ try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 # The ONLY place a git exit code is read. Everything that decides something
 # calls this and tests `.Exit -eq 0`.
 #
+# GAP-031 widened what is cleared here: `GIT_DIR` alone was enough while every
+# call was `rev-parse --short HEAD` / `rev-parse HEAD`. The mainline resolution
+# added `rev-parse --verify <ref>^{commit}`, and THAT is hijackable by
+# `GIT_OBJECT_DIRECTORY` / `GIT_COMMON_DIR`: with either pointing at another
+# repo, the walk to the commit fails (exit 1) and the guard falls silent —
+# measured (2026-10-17) as a REGRESSION of cell A11, which is exactly what that
+# cell exists to catch. The width was chosen by measurement, not by enumeration:
+# on this git (2.49.0.windows.1) exactly those two variables changed the reading.
+# The other seven are cleared anyway — clearing costs nothing and "which one
+# hijacks" is a git implementation detail nobody should have to remember.
+#
 # `$script:` is deliberate, and it is measured rather than assumed: a scriptblock
 # invoked with `& { }` runs in a CHILD scope that can READ the enclosing script
 # scope but whose unqualified assignments land in that child scope and are lost.
@@ -103,6 +125,17 @@ try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 # `$LASTEXITCODE` itself does survive a plain `& { }` into the parent scope, but
 # NOT through an assignment that would otherwise be scoped to the child, so the
 # explicit `$script:` write is what makes the helper immune to the difference.)
+$GitEnvFamily = @(
+    'GIT_DIR',
+    'GIT_WORK_TREE',
+    'GIT_OBJECT_DIRECTORY',
+    'GIT_COMMON_DIR',
+    'GIT_INDEX_FILE',
+    'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+    'GIT_CEILING_DIRECTORIES',
+    'GIT_NAMESPACE',
+    'GIT_PREFIX'
+)
 function Invoke-GitChecked {
     param([scriptblock]$GitCall)
     $script:__gitExit = $null
@@ -122,14 +155,18 @@ function Invoke-GitChecked {
             # match the page, the guard exits 0 SILENTLY and waves a stale page
             # through. This guard resolves its own target explicitly, so an
             # ambient GIT_DIR must not override it.
+            # GAP-031: clear the WHOLE family, not just GIT_DIR (see the note above).
             # ($env: is PROCESS-scoped, not scope-scoped -- hence save/restore.)
-            $savedGitDir = $env:GIT_DIR
-            $env:GIT_DIR = $null
+            $saved = @{}
+            foreach ($n in $GitEnvFamily) {
+                $saved[$n] = [Environment]::GetEnvironmentVariable($n)
+                [Environment]::SetEnvironmentVariable($n, $null)
+            }
             try {
                 & $GitCall
                 $script:__gitExit = $LASTEXITCODE
             } finally {
-                $env:GIT_DIR = $savedGitDir
+                foreach ($n in $GitEnvFamily) { [Environment]::SetEnvironmentVariable($n, $saved[$n]) }
             }
         }
     } catch {
@@ -253,15 +290,64 @@ try {
     }
     if (-not $repo) { exit 0 }
 
-    # Judged by exit code. On unborn input (a `git init` with no commit yet) git
-    # exits 128, so this exits silently exactly as the old truthiness test did on
-    # its empty output — the same landing, now for a stated reason (GAP-012: a
-    # repo that resolves but has no HEAD is still silent; kept as-is, not
-    # claimed to be closed).
-    $headProbe = Invoke-GitChecked { git -C $repo rev-parse --short HEAD 2>$null }
-    if ($headProbe.Exit -ne 0) { exit 0 }
-    $head = $headProbe.Text
-    if (-not $head) { exit 0 }
+    # --- GAP-031: the criterion is the MAINLINE, not the checked-out HEAD.
+    #
+    # Resolved in three levels; the FIRST one that holds wins:
+    #   1. the remote default branch (`symbolic-ref refs/remotes/origin/HEAD`,
+    #      e.g. `refs/remotes/origin/main`). `symbolic-ref` alone is NOT enough:
+    #      it does not resolve unborn / dangling targets, so the result must then
+    #      pass `rev-parse --verify` (exit code 0). BOTH steps are judged by exit
+    #      code, never by the truthiness of the output.
+    #   2. the local trunk branch `refs/heads/main` (`rev-parse --verify` exit 0).
+    #   3. the checked-out HEAD — the previous behaviour, kept as an EXPLICIT
+    #      fallback. A repo with neither `origin/HEAD` nor `main` (a fresh
+    #      `git init`, no remote) has no "mainline" concept at all: erroring out
+    #      here would put noise exactly at onboarding time (the same judgement
+    #      GAP-012 recorded for unborn repos), and exiting silently would make
+    #      the guard look like it runs. So HEAD it is — but the reason string
+    #      always NAMES the line that was used, so a reader can tell which one.
+    #
+    # WHY this ordering matters (measured, issue #36): on a feature branch the
+    # checked-out HEAD is NOT the trunk. A page recording the trunk's (correct)
+    # SHA was reported as "lagging" — twice in a real workspace — and the same
+    # false alarm reproduces on a brand-new branch with NO commit of its own.
+    $mainRef = $null
+    $mainName = $null
+    $originHead = Invoke-GitChecked { git -C $repo symbolic-ref --quiet refs/remotes/origin/HEAD 2>$null }
+    if ($originHead.Exit -eq 0 -and $originHead.Text) {
+        $candRef = $originHead.Text
+        if ((Invoke-GitChecked { git -C $repo rev-parse --verify --quiet "$candRef^{commit}" 2>$null }).Exit -eq 0) {
+            $mainRef = $candRef
+            $mainName = $candRef -replace '^refs/remotes/', ''     # refs/remotes/origin/main -> origin/main
+        }
+    }
+    if (-not $mainRef) {
+        if ((Invoke-GitChecked { git -C $repo rev-parse --verify --quiet 'refs/heads/main^{commit}' 2>$null }).Exit -eq 0) {
+            $mainRef = 'refs/heads/main'
+            $mainName = 'main'
+        }
+    }
+    if (-not $mainRef) {
+        if ((Invoke-GitChecked { git -C $repo rev-parse --verify --quiet 'HEAD^{commit}' 2>$null }).Exit -eq 0) {
+            $mainRef = 'HEAD'
+            $mainName = 'HEAD（未找到主干）'
+        }
+    }
+
+    # Nothing resolves (unborn repo, or a repo whose HEAD cannot be read): silent,
+    # exactly as before — "the page exists and must not lag" has no premise here
+    # (GAP-012; kept as-is, not claimed to be closed).
+    if (-not $mainRef) { exit 0 }
+
+    # FULL commit id of the mainline: this is the left-hand side of the compare.
+    # Judged by exit code; `.Text` is the payload. The short form is fetched
+    # separately for the error message only — it is never the criterion.
+    $headFullProbe = Invoke-GitChecked { git -C $repo rev-parse --verify --quiet "$mainRef^{commit}" 2>$null }
+    if ($headFullProbe.Exit -ne 0) { exit 0 }
+    $headFull = $headFullProbe.Text
+    if (-not $headFull) { exit 0 }
+    $headShort = (Invoke-GitChecked { git -C $repo rev-parse --short $mainRef 2>$null }).Text
+    if (-not $headShort) { $headShort = $headFull }
 
     $content = Get-Content -LiteralPath $page -Raw
     # Case-insensitive: an uppercase SHA must still be COMPARED, not fall through
@@ -296,7 +382,7 @@ try {
     # and the helper's scoped EAP keeps a failed `--verify` (e.g. the id names a
     # tree, not a commit) from being promoted to a terminating error that the
     # outer catch would swallow into silence. `ToLower()` because object ids are
-    # lowercase hex. `$head` stays short -- error-message wording.
+    # lowercase hex. `$headShort` stays short -- error-message wording.
     #
     # BOTH SIDES ARE JUDGED BY EXIT CODE, and the outputs are compared only as
     # payload: comparing the two OUTPUTS as strings was itself a silent path —
@@ -304,11 +390,17 @@ try {
     # equal garbage and the guard called it "in sync" (the V13 case). A non-zero
     # exit on either side means the id did not resolve, which is a LAGGING page,
     # not a reason to fall silent.
-    $headFullProbe = Invoke-GitChecked { git -C $repo rev-parse HEAD 2>$null }
+    #
+    # GAP-031: the left side is now the MAINLINE's full id ($headFull), resolved
+    # above. The right side is unchanged on purpose (GAP-008's fix).
     $recFullProbe = Invoke-GitChecked { git -C $repo rev-parse --verify --quiet "$($recorded.ToLower())^{commit}" 2>$null }
-    if (($headFullProbe.Exit -eq 0) -and ($recFullProbe.Exit -eq 0) -and ($headFullProbe.Text -eq $recFullProbe.Text)) { exit 0 }
+    if (($recFullProbe.Exit -eq 0) -and ($headFull -eq $recFullProbe.Text)) { exit 0 }
 
-    $reason = "进度页落后于仓库：$name 记录的 HEAD 是 $recorded，而当前是 $head。" +
+    # The reason MUST name the line that was compared (GAP-031). The old wording
+    # said "currently X", which on a feature branch points the reader at the
+    # wrong fact — the page is stale relative to the TRUNK, not relative to their
+    # branch tip.
+    $reason = "进度页落后于主干：$name 记录的 HEAD 是 $recorded，而 $mainName 是 $headShort。" +
               "请先更新该页面再结束本轮——按 AGENTS.md 的交付约定，进度页要与代码同成熟度。" +
               "需要同步的内容通常包括：状态条 head、用例数、覆盖率、GAP 台账状态与图例、以及新增的提交行。"
 

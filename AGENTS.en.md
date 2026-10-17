@@ -780,9 +780,18 @@ progress page is untracked, so neither the ledger nor CI can reach it. Hence the
 | Progress page | the filename named by the pointer, at the workspace root, sibling to `.claude/` |
 
 **Criterion**: **only when the progress page exists** is the SHA recorded in its status bar
-(`<div>head <b>…</b></div>`) compared **by prefix** (7 or 40 characters both accepted) with
-`git -C "$REPO" rev-parse --short HEAD` (`$REPO` per §0.0); on mismatch it **blocks the end of
+(`<div>head <b>…</b></div>`) compared with the **mainline's** full commit id (7 or 40 characters
+both accepted); on mismatch it **blocks the end of
 the turn** and feeds the reason back to the model, requiring the page to be updated first.
+**The mainline resolves in three levels** (`GAP-031`, option A as ruled by the user):
+① `refs/remotes/origin/HEAD` → ② `refs/heads/main` → ③ the checked-out `HEAD` (**explicit
+fallback**; the `reason` names which line was used).
+> ⚠️ **The comparison is against the mainline, NOT the checked-out HEAD.** The latter is a
+> private, short-lived fact; the page is the trunk fact stakeholders read. Comparing against
+> HEAD raises a **false alarm on every feature branch** (measured twice, and reproducible with
+> **zero commits on the new branch**).
+> Mechanical criteria: `self-test.ps1`'s **`A12`/`A13`** (`A12` = branch with no commit + trunk
+> advanced → silent; `A13` = page records a commit that resolves but is not on the trunk → block).
 **With no page there is no criterion** — see item 1 below.
 
 **Five deliberate design decisions**:
