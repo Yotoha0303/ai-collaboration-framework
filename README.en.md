@@ -336,6 +336,7 @@ docs/
                                  ledger body points here only when something needs re-checking
   reference-implementations.md    Ten-stage reference implementations: what each stage's exit
                                  looks like in a real production repo (read on demand)
+  commit-guidelines.md           Pre-commit guidelines: issue before PR; small commits; gates & verification checklist (static memory file, read on demand)
   delivery-gates.md              Delivery-path details: the pre-commit local gate; the
                                  "instructions to be executed" class of document (read on demand)
   drift-cases.md                 Drift actually caught during the rollout (a snapshot; read on demand)

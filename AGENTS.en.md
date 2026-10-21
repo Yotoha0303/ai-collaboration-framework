@@ -646,6 +646,16 @@ work"?** Only the former is tracked.
 **Human decision**: changes are **not stacked up locally**; every change is **opened as a PR
 against the upstream author**.
 
+> 🔒 **Hard specification for commits to the framework repo (`ai-collaboration-framework`) (Pre-commit Static Memory File)**:
+> Whenever committing code or doc changes to the AI collaboration framework repo itself, **one must read the static memory file [`docs/commit-guidelines.md`](docs/commit-guidelines.md) (Pre-commit Guidelines) before triggering any commit action!**
+> Under normal operation this file is **not read** (loaded on-demand, zero daily context overhead).
+> **Core Red Lines**:
+> 1. **To commit code, open a PR first**: Direct commits or pushes to the framework's `main` branch are strictly prohibited! All framework modifications must be reviewed and merged via Pull Requests from independent branches;
+> 2. **For clear issues such as defects or bugs, file an issue first**: Any identified defect, gap, or bug must first be filed as a GitHub Issue, and the PR must reference the issue;
+> 3. **Meta-architecture and rule changes require user discussion first**: Without explicit discussion and authorization from the user, modifying and committing framework rules is strictly prohibited.
+>
+> 📄 **The full commit specifications have been extracted and consolidated into [`docs/commit-guidelines.md`](docs/commit-guidelines.md) (on-demand static memory file)**.
+
 > ⚠️ **"Push to the upstream author" holds only for an *adopter*** (`GAP-018`): **the framework repo
 > itself is not a template repo being adopted** — it has no "upstream author" to push to;
 > **its delivery target is itself** (`origin` *is* the target repo).

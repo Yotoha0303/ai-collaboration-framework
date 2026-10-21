@@ -317,6 +317,7 @@ docs/
   ledger-evidence/               台账的**取证附录**（A–D：检索留痕 / 证据抄录 / 核验命令 / 守卫实测）
                                  **平时不读、按需打开**——台账正文只在需要复核时指向它
   reference-implementations.md   **十环参照实现**：每环准出在**真实生产仓**里长什么样（按需读）
+  commit-guidelines.md           提交前规范：先 Issue 后 PR · 小步提交 · 门禁与核验清单（静态记忆文件，按需读）
   delivery-gates.md              交付路径细则：提交前本地门禁 · 待执行指令类文档（按需读）
   drift-cases.md                 框架落地时实测发现的漂移（**示例快照**，按需读）
   adopting.md                    **采用本框架**：逐环「语言插槽」对照表 · 最小初始化三步 · 项目化清单
