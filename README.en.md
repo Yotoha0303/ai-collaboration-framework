@@ -49,7 +49,7 @@ but the **falsifiable criteria** and the **hooks that actually block**.
 
 ---
 
-## 2. The core cognitive model
+## 2. The task-location coordinate system
 
 Tasks are located on a two-dimensional coordinate system:
 
@@ -665,7 +665,7 @@ items** picked from that ledger; they are also where outside discussion is most 
 
 **How to contribute** (read `AGENTS.md` first — it is the source of rules):
 
-- **If you agree with the philosophy** — "discipline cannot be fixed by reminders, only by
+- **If you agree with the approach** — "discipline cannot be fixed by reminders, only by
   mechanisms" — what is most missing is **adapter scripts and pre-execution guards**: fill the ten stages' criterion
   sockets (§12) with **copy-pasteable commands for your stack**, or contribute `PreToolUse` guards for `GAP-017`/`GAP-024`/`GAP-026`.
 - **Found a crack in a criterion?** Bring a **negative case** (what fault injection makes it pass
