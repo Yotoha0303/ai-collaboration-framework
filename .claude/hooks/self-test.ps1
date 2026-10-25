@@ -390,6 +390,12 @@ if (-not $script:GitRepo) { Fail-NoGitRepo }
 
 $script:Pass = 0
 $script:Fail = 0
+# `SKIP` = **合法地没有判据**的格（进度页 / memory.md / 源文件 / 角色层尚未初始化）。
+# **为什么它必须单独计数**（`2026-10-25`，qa-validator 独立测试发现，issue #55）：
+# `C6` 的分母原先写成 `Pass + Fail + 1` ⇒ **SKIP 既不进 Pass 也不进 Fail，分母就变小**。
+# 真实 `git clone` 里 E 组与 E5 全 SKIP，实测 `C6 实际 40 / 文中出现 45` ⇒ **克隆检出下必红**。
+# 这不是「文档写错了」，而是**分母漏了一类格**：**空集必须可见**，否则"没跑"会冒充"通过"（D3）。
+$script:Skip = 0
 
 # 「造沙箱的 git 调用失败 ⇒ 报错退出」的唯一出口。
 # **不核对退出码 = 在"沙箱不存在"的前提下继续判分**：实测注入 `GIT_DIR` 后 `init` 报 0 却没建仓，
@@ -1007,10 +1013,36 @@ foreach ($ef in $entryFiles) {
     if (-not (Test-Path -LiteralPath $ep)) { $entryBad += "$ef 不存在"; continue }
     $etxt = [System.IO.File]::ReadAllText($ep)
     if ($etxt -notmatch 'ONBOARDING\.md') { $entryBad += "$ef 未指向 ONBOARDING.md" }
-    foreach ($m in [regex]::Matches($etxt, '@[^\n]*ONBOARDING')) { $entryBad += "$ef 出现 @ 导入：$($m.Value.Trim())" }
+
+    # --- ② 左边界：`@` 只能是【行首或空白之后】的 `@`（`2026-10-25`，issue #55）
+    # 真导入只有 `@path` / `@[label](path)` 两种形态，`@` 前面**不会紧贴**别的字符。
+    # **原判据 `@[^\n]*ONBOARDING` 没有左边界** ⇒ 入口里出现 `a@b.com`、且**同一行**提到
+    # `ONBOARDING.md` 就误报 FAIL（qa-validator 已复现；本轮实测注入确认）。
+    # **误报比漏报更糟**：它会教人忽略这条判据（D3）。行内邮箱的 `@` 前面是 `a`（非空白）⇒ 不再命中。
+    foreach ($m in [regex]::Matches($etxt, '(?m)(^|\s)@[^\n]*ONBOARDING')) { $entryBad += "$ef 出现 @ 导入：$($m.Value.Trim())" }
+
+    # --- ③ 指针必须指向【真实存在】的文件（`2026-10-25`，issue #55）
+    # 原来只断言"文中出现 ONBOARDING.md"——把 `CLAUDE.md` 里的 `ONBOARDING.md` 改成
+    # `docs/ONBOARDING.md`（该文件**不存在**）**照样 PASS**：幻影路径假绿（本框架真实抓到过这一族）。
+    # **取舍（显式，别当它是疏漏）**：抽取 `ONBOARDING*.md` 的**前置路径段**逐个 `Test-Path`，
+    # 判据取「**至少有一个引用能解析到真实文件**」，而**不是**"每个引用都必须存在" ——
+    # 入口里的**叙述性文字**（例如"它指向 `ONBOARDING.md` 的说明"）与**真指针**在文本上不可分，
+    # 逐个强判会把合法叙述报成违规（D3：误报的判据比没有判据更糟）。
+    # **代价（如实）**：因此「一个真指针 + 另一处幻影提及」仍会通过。本格保证的是
+    # 「入口指向的东西**至少有一个真的在那儿**」，不保证每一个都真。
+    # 左负向前瞻 `(?<![\w./-])` 保证 `docs/ONBOARDING.md` 只被整体取一次（不会另外再匹配出裸 `ONBOARDING.md`）。
+    $ptrRefs = @(
+        [regex]::Matches($etxt, '(?<![\w./-])((?:\.{0,2}/)?(?:[\w.-]+/)*ONBOARDING(?:\.en)?\.md)(?![\w.-])') |
+            ForEach-Object { $_.Groups[1].Value }
+    )
+    $ptrOk = 0
+    foreach ($pr in $ptrRefs) { if (Test-Path -LiteralPath (Join-Path $RepoRoot $pr)) { $ptrOk++ } }
+    if ($ptrRefs.Count -gt 0 -and $ptrOk -eq 0) {
+        $entryBad += "$ef 的 ONBOARDING 指针解析不到真实文件（$($ptrRefs -join ', ')）"
+    }
 }
 Assert-Cell -Name "D4 两入口含 ONBOARDING.md 指针且不 @ 导入（$($entryFiles.Count) 个入口）" `
-    -Expect '问题 = 0（两文件均存在 · 均含指针 · 均无 @ 导入）' `
+    -Expect '问题 = 0（两文件均存在 · 均含指针 · 指针至少一个可解析 · 均无 @ 导入）' `
     -Actual ([pscustomobject]@{ Exit = $entryBad.Count; Stdout = ($entryBad -join '; ') }) `
     -Predicate { $entryBad.Count -eq 0 }
 
@@ -1031,7 +1063,10 @@ if (Test-Path -LiteralPath $ptrPath) {
 
 if (-not $pagePath -or -not (Test-Path -LiteralPath $pagePath)) {
     # 页面不存在 = 尚未初始化，无判据可言（与守卫同口径，AGENTS.md §5）。**不算失败**。
-    "  SKIP  E 组：进度页不存在（尚未初始化），无判据可言"
+    # ⇒ 这个 SKIP 覆盖 **4 格**：`E1` / `E3` / `E4` / `E2`（它们全在下面的 `else` 里，
+    #    页面缺失时**一格都不会跑**）。`E5` **不在**这里 —— 它刻意放在块外（见下方注释）。
+    $script:Skip += 4
+    "  SKIP  E 组：进度页不存在（尚未初始化），无判据可言（计 4 格：E1/E3/E4/E2）"
 } else {
     $pageTxt = [System.IO.File]::ReadAllText($pagePath)
 
@@ -1118,7 +1153,10 @@ if (-not $pagePath -or -not (Test-Path -LiteralPath $pagePath)) {
     # memory.md 不存在时跳过（首次使用尚未初始化，AGENTS.md §5 同口径）。
     $memPath = Join-Path $RepoRoot 'memory.md'
     if (-not (Test-Path -LiteralPath $memPath)) {
-        "  SKIP  E4：memory.md 不存在（尚未初始化）"
+        # 计 **1 格**（`E4` 自己）。**与上面的「E 组 SKIP」不会重复计数**：
+        # 本行在页面存在时的 `else` 分支内，而「E 组 SKIP」只在页面不存在时走到 —— 二者互斥。
+        $script:Skip += 1
+        "  SKIP  E4：memory.md 不存在（尚未初始化）（计 1 格）"
     } else {
         $memTxt = [System.IO.File]::ReadAllText($memPath)
         $memBad = @()
@@ -1154,7 +1192,9 @@ if (-not $pagePath -or -not (Test-Path -LiteralPath $pagePath)) {
         Assert-Cell -Name "E2 页面待办覆盖源文件（源 $($srcIds.Count) 条 / 页 $($todoPageIds.Count) 条）" -Expect '漏条 = 0' `
             -Actual ([pscustomobject]@{ Exit = $todoMissing.Count; Stdout = ($todoMissing -join ',') }) -Predicate { $todoMissing.Count -eq 0 }
     } else {
-        "  SKIP  E2：源文件 我要做什么.txt 不存在"
+        # 计 **1 格**（`E2` 自己）。与 `E4` 同：在 `else` 分支内，不与「E 组 SKIP」重复计数。
+        $script:Skip += 1
+        "  SKIP  E2：源文件 我要做什么.txt 不存在（计 1 格）"
     }
 }
 
@@ -1183,7 +1223,9 @@ if (-not $pagePath -or -not (Test-Path -LiteralPath $pagePath)) {
 #   与 `AGENTS.md` §4.0「① 必须留一行」同源：**没有那一行，"做过判断"与"没做过"不可区分**。
 $memBizPath = Join-Path $RepoRoot 'memory.md'
 if (-not (Test-Path -LiteralPath $memBizPath)) {
-    "  SKIP  E5：memory.md 不存在（尚未初始化）"
+    # 计 **1 格**（`E5` 自己）。它**不在**「E 组 SKIP」的 4 格里 —— `E5` 刻意放在页面条件块之外。
+    $script:Skip += 1
+    "  SKIP  E5：memory.md 不存在（尚未初始化）（计 1 格）"
 } else {
     $subRepoNames = @()
     foreach ($subDir in @(Get-ChildItem -LiteralPath $RepoRoot -Directory -Force -ErrorAction SilentlyContinue)) {
@@ -1265,7 +1307,9 @@ foreach ($f in @(Get-ChildItem -LiteralPath $agentDir -Filter '*.md' -ErrorActio
 
 if (-not $agentDirExists) {
     # 没装角色层 = 合法状态（采用方可以只要框架的守卫与文档），不判 ⇒ SKIP。
-    "  SKIP  F 组：.claude/agents/ 不存在（本工作区未装角色层），无判据可言"
+    # 计 **2 格**：`F1` + `F2`（目录不存在时下面那个 `else` 整块不执行，两格都不跑）。
+    $script:Skip += 2
+    "  SKIP  F 组：.claude/agents/ 不存在（本工作区未装角色层），无判据可言（计 2 格：F1/F2）"
 } elseif ($agentFileCount -eq 0) {
     # 目录在、里面一个角色都没有 = **半成品**（见上方注释）⇒ 必须响，且**不依赖任何角色状态**
     $script:Fail++
@@ -1348,7 +1392,10 @@ foreach ($f in @(Get-RepoFiles '*.md')) {
         foreach ($m in [regex]::Matches($txt, $p)) { $foundTotals[[int]$m.Groups[1].Value] = $true }
     }
 }
-$actualCells = $script:Pass + $script:Fail + 1   # +1 = C6 自己这一格（此刻尚未计入）
+# ⚠️ **分母必须含 `SKIP`**（`2026-10-25`，issue #55）：一个 SKIP 的格**是存在的**，只是此环境无判据。
+# 漏掉它 ⇒ 分母变小 ⇒ **采用方 / 克隆检出（页面与 memory.md 都不存在）恒报「实际 40；文中出现 45」**。
+# `+1` 仍是 C6 自己（此刻尚未计入）。判据：`Pass + Fail + Skip + 1` 必须等于文档里抄写的总格数。
+$actualCells = $script:Pass + $script:Fail + $script:Skip + 1   # +1 = C6 自己这一格（此刻尚未计入）
 $staleTotals = @($foundTotals.Keys | Where-Object { $_ -ne $actualCells } | Sort-Object)
 # ⚠️ 谓词里的 `$foundTotals.Count -gt 0` 与 `$staleTotals.Count -eq 0` **必须同时成立**：
 # 枚举塌空时 `$foundTotals` 是**空的**，而"没有任何总数陈述与 $actualCells 不符"**恒真** ⇒
@@ -1366,6 +1413,9 @@ Assert-Cell -Name "C6 全仓格数【总数】陈述一致（实际 $actualCells
 "---- 小结 ----"
 "  PASS = $script:Pass"
 "  FAIL = $script:Fail"
+# **跳过数必须可见**（`2026-10-25`，issue #55）：SKIP 的格没有判据，它们的"没跑"与"跑过了"在
+# 只读 PASS/FAIL 时**同形**。「空集必须可见」——C6 自己那条注释要的就是这个，这里把它贯彻到小结。
+"  SKIP = $script:Skip"
 ""
 if ($script:Fail -gt 0) {
     "守卫自测【未通过】——有格的读数与预期不符，守卫可能已失明。"

@@ -44,7 +44,7 @@
 | 体量可控 | `(Get-Content ONBOARDING.md).Count` | 中文 **71** 行 / 英文 **71** 行（< 120） |
 | 判据词存在 | `Select-String -Pattern '接入确认'` / `'现状基线'` | 中文 **1** / **2** 处 |
 | 判据词存在（英） | `Select-String -Pattern 'attach check'` / `'status baseline'` | 英文 **1** / **2** 处 |
-| 不破坏既有格数、不引入回归 | `powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/self-test.ps1` | 提交前实跑，结果见下方「回填」（第 1 单元 40 PASS / 0 FAIL；第 2 单元加四格后 43 PASS / 2 FAIL；第 3 单元收尾 **45 PASS / 0 FAIL**） |
+| 不破坏既有格数、不引入回归 | `powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/self-test.ps1` | 提交前实跑，结果见下方「回填」（第 1 单元 40 PASS / 0 FAIL；第 2 单元**加五格**后 43 PASS / 2 FAIL；第 3 单元收尾 **45 PASS / 0 FAIL**） |
 | 编号未撞车（跨全部 ref 并集） | `git ls-tree -r --name-only <ref> -- docs/changes/` × 全部 ref | `docs/changes/` **此前不存在**（`Test-Path` = False），并集为空 ⇒ 取 `001` |
 
 ### 3.2 负向 / 待验证（本单元**未建**判据，如实标注）
@@ -88,3 +88,21 @@
 - [ ] **`docs/ledger.md`**：本次**未登记 GAP**——本单元是**已批准方案的实施**，
       不新增缺口；第 2 单元若发现判据的残余弱点，再按 §6 登记（需授权）
 - [ ] **进度页 / `record.md`**：属**总控**职责，本子代理**不写**
+
+## 五、第 4 单元 · qa-validator 独立测试发现的缺陷修复（`2026-10-25`，issue #55）
+
+**改动面**：`.claude/hooks/self-test.ps1`（`C6` 分母 · `D4` 两处）· 本文件（「加四格」→「加五格」）·
+`docs/guard-self-test.md` / `docs/delivery-gates.md` / `README` 双语（自测耗时读数）。
+**格数不变（45）**，**未加 `C2` 锚点**。
+
+| 缺陷 | 修法 | 注入验证（真跑） |
+| --- | --- | --- |
+| **`C6` 分母把「跳过」当「不存在」**：`$actualCells = Pass + Fail + 1`，`SKIP` 既不进 Pass 也不进 Fail ⇒ 分母变小。真实 `git clone` 里 E 组与 E5 全 SKIP ⇒ **`实际 40 / 文中出现 45`、`39 PASS / 1 FAIL / exit 1`** | 新增 `$script:Skip`；**每个 SKIP 分支按它代表的格数累加**（E 组 4 · E4 1 · E2 1 · E5 1 · F 组 2），分母改为 `Pass + Fail + Skip + 1`；小结加 `SKIP = N` 一行 | 维护者树 **45 / 0 / SKIP 0 / exit 0**；**真实 clone**（仅替换 `self-test.ps1` 为未提交版）**40 / 0 / SKIP 5 / exit 0 / C6 实际 45** |
+| **`D4` 假红**：`@[^\n]*ONBOARDING` 无左边界，`a@b.com` 同行提到 `ONBOARDING.md` 即误报 | 左边界收紧为「**行首或空白之后**」的 `@`（`(?m)(^` + 竖线 + `\s)@[^\n]*ONBOARDING`；本表内竖线不便直书，以文字代替） | 注入 `<!-- 联系方式 a@b.com ；接入见 ONBOARDING.md -->` ⇒ **PASS**；注入 `@ONBOARDING.md` ⇒ **FAIL**（`实测：1 / [CLAUDE.md 出现 @ 导入：@ONBOARDING]`） |
+| **`D4` 假绿**：指针指向不存在的 `docs/ONBOARDING.md` 仍 PASS | 抽 `ONBOARDING*.md` 的路径段逐个 `Test-Path`，判据取**至少一个可解析**（取舍见脚本注释：叙述性提及与真指针文本上不可分，逐个强判会误报） | 改成 `docs/ONBOARDING.md` ⇒ **FAIL**（`实测：1 / [CLAUDE.md 的 ONBOARDING 指针解析不到真实文件（docs/ONBOARDING.md）]`）；还原 ⇒ **PASS** |
+| **进度页 0 步措辞**把三种**布局**当成了两种**模式** | 页面改为「工作区模式（框架自开发 / 业务开发）」，并注明布局（目标 / 自托管 / 带项目）是另一回事（`AGENTS.md` §0.0） | 页面**不入库**（本机排除）⇒ 判据是 `AGENTS.md:771`「**模式只有两种**」的原文对照，非机械格 |
+| **三处读数** | 本文件「加四格」→「**加五格**」；`guard-self-test.md` 耗时 `21 s` → **本次实测 `24.5 s` / `26.7 s`**；`delivery-gates.md` / `README` 双语同值同步 | `C6` / `C3` 照绿即证文本改动未破坏结构 |
+
+> **未做的**：`docs/ledger.md`（`GAP-029` 残余③ 状态更新由总控处理）· `ONBOARDING*.md` 正文 · `AGENTS.md` §9.0 正文。
+> **未建**：`SKIP` 数**没有独立的负向格**（谁去注入"某个 SKIP 漏计"？）——它的正确性目前靠
+> 真实 clone 的读数（`SKIP = 5` 且 `实际 45`）与逐分支注释支撑，属 `GAP-017` 同族，登记交总控裁定。
