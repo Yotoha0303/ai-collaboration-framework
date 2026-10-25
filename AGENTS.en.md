@@ -1038,13 +1038,29 @@ This section lists drift **actually caught and fixed** when the framework was bu
 **Trigger**: entering a business project that **already exists** (not starting from zero) — do **not**
 just start working. Follow these **five steps**:
 
+> **Step 0 · attach check** (before the five steps below): first determine the **workspace mode** —
+> ① does the workspace root contain `.git`; ② how many subdirectories each contain their own `.git` (= the number of business repos);
+> ③ does `memory.md` record a "business repo" line.
+> **There are only two modes**: **framework self-development** (the shape of this repo: the root contains `.git` and the framework files sit directly under it) · **business development** (a business repo exists, or the user explicitly says they are developing a business).
+> **Business-development mode + no business repo ⇒ first remind the user that "you can put the business repo under the workspace root" and give the criterion, then continue**;
+> **framework self-development mode ⇒ do not remind** (otherwise this repo raises a false alarm every round — **a criterion that cries wolf is worse than no criterion**).
+> **No admission**: while the user has not confirmed the attachment target, **do not** start work.
+> Guide file: `ONBOARDING.md` at the root (**read on demand; not `@`-imported by any entry point**).
+
 | Step | Action | Criterion / landing point |
 | --- | --- | --- |
 | **1** | **Measure the location**: `git rev-parse --show-toplevel` to establish which repo you are in; **if `memory.md` has no project location ⇒ ask the user per §0.0** | a wrong location **raises no error** — it is "silently wrong" |
-| **2** | **Judge the progress**: using the **software lifecycle and the project's existing documents** (`docs/planning/` · `docs/changes/` · `docs/adr/` · the ledger · `README` · issues), determine **which stage it is currently at**, and **record it** (in `memory.md` + the progress page) | **never infer from directory or file names** (D1); **the criterion is file content**, not its existence |
+| **2** | **Judge the progress**: using the **software lifecycle and the project's existing documents** (`docs/planning/` · `docs/changes/` · `docs/adr/` · the ledger · `README` · issues), determine **which stage it is currently at**, and **record it** (in `memory.md` + the progress page) | **never infer from directory or file names** (D1); **the criterion is file content**, not its existence. **And the result of judging the progress must land on disk** as `<businessrepo>/docs/planning/baseline-YYYYMMDD.md` (template in `ONBOARDING.md`), **not** only in `memory.md`. |
 | **3** | **Summarise and confirm requirements**: produce a **project overview** and **confirm the requirements** — **read them from the documents where possible**, and **ask the user** where they cannot be read; **never invent requirements** for the user (zero-assumption principle, §0.2) | confirming requirements is the **human's** prerogative, not the orchestrator's |
 | **4** | **Generate domain roles**: per the project's **domain business needs**, **create** the required agents under `.claude/agents/` and **register them in the registry** | same root as user todo **`#9`** / ledger **`DEFER-006`**; **never substitute** an existing role (§4.1) |
 | **5** | **Raise an ADR before developing**: assess against **software engineering norms / industry standards / the software lifecycle**, **land the ADR**, **then enter development** | **this is already a rule** — the stage-01 hard gate in §2 plus **D2 hard stage gates**; this section only demands it **actually be executed**, it **adds no new rule** (user todo `#20`) |
+
+> **Opening line (before any understanding action)**: before it starts reading the business repo, the AI **must first say to the user** —
+> "I will first understand how far this business repo has got — reading its project documents and code, and producing a **status baseline** for the work that follows."
+> **Why**: the user must be able to expect that "the AI is understanding right now, not building"; otherwise "understanding first" and "starting immediately" look identical from the outside.
+
+> **Multi-repo ownership**: the status baseline is **written into the business repo** (`<businessrepo>/docs/planning/`), and **the framework repo holds no business state**;
+> **citing identifiers across repos is a phantom citation** — every repo has its own ledger and identifier space (§6), and a cited number cannot be opened in the reader's checkout.
 
 > ⚠️ **The mechanical strength of this section (stated honestly)**: **step 5's "is there an ADR?" has no
 > guard today** — it relies on self-discipline, and falls under the `GAP-017` family; roadmap **`P2.2`**

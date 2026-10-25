@@ -286,6 +286,8 @@ GEMINI.md                        Antigravity 瘦入口：@[label](path) 预加�
 README.en.md                     README 英文版
 LICENSE                          Apache-2.0
 NOTICE                           版权与归属声明（Apache-2.0 §4(d)）
+ONBOARDING.md                    新用户接入引导（按需读）：clone 后第一步 · 两条路径 · 现状基线模板
+ONBOARDING.en.md                 同上，英文版
 
 prompts/
   AI总控.md                      总控必备提示词（二维认知模型 8 层级 × 11 阶段）
@@ -450,6 +452,8 @@ Claude Code 的三条查找路径——`AGENTS.md` / `.claude/agents/` / `settin
 ---
 
 ## 十二、怎么用
+
+> 🚀 **刚 clone 下来？先读 [`ONBOARDING.md`](ONBOARDING.md)**——它只回答「第一步做什么」，读完即可不再看。
 
 1. **从工作区根启动**：
    - **Claude Code**：跑 `launchers/start_claude.bat`（Windows）或 `launchers/start_claude.sh`（Linux/macOS）——三条查找路径**只向上扫**，从别处启动框架会**静默不存在**（见 §十）。

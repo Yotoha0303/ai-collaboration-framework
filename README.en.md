@@ -301,6 +301,9 @@ GEMINI.md                        Antigravity thin entry point: @[label](path) pr
 README.en.md                     This file
 LICENSE                          Apache-2.0
 NOTICE                           Copyright and attribution (Apache-2.0 §4(d))
+ONBOARDING.md                    New-user onboarding (read on demand): first step after cloning ·
+                                 the two paths · status-baseline template
+ONBOARDING.en.md                 The same, in English
 
 prompts/
   AI总控.md                      Orchestrator prompt (2-D model: 8 layers × 11 stages)
@@ -489,6 +492,8 @@ These records **are not rewritten**. What happened is an evidence chain, not a t
 ---
 
 ## 12. Getting started
+
+> 🚀 **Just cloned it? Read [`ONBOARDING.en.md`](ONBOARDING.en.md) first** — it answers only "what is step one", and once you finish it you need not look again.
 
 1. **Launch from the workspace root**: run `launchers/start_claude.bat` (Windows) or
    `launchers/start_claude.sh` (Linux/macOS). **You must** launch this way — the three lookup
