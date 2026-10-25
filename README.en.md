@@ -590,13 +590,15 @@ not touch your working tree):
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/self-test.ps1
-# Expect: PASS = 40 / FAIL = 0, exit code 0
+# Expect: PASS = 45 / FAIL = 0, exit code 0
 ```
 
-It covers **A–F, 40 cells in six groups**: **A** progress-page guard 13 (incl. `A12`/`A13`: compares
+It covers **A–F, 45 cells in six groups**: **A** progress-page guard 13 (incl. `A12`/`A13`: compares
 the **mainline**, not the checked-out `HEAD` — `GAP-031`) · **B** numbering guard 2 ·
-**C** rule-projection 16 (`C1` × 2 · `C2` × 9 anchors · `C3`–`C7`) · **D** dual-runtime parity 3 ·
-**E** progress-page projection completeness 4 · **F** role read-only fence 2. **Every cell's teeth were verified
+**C** rule-projection 19 (`C1` × 3 · `C2` × 11 anchors · `C3`–`C7`) · **D** dual-runtime parity 4
+(incl. `D4`: both entry files must point at `ONBOARDING.md` and must **not** `@`-import it) ·
+**E** progress-page projection completeness 5 (incl. `E5`: the `业务仓` line in `memory.md` = filesystem
+measurement) · **F** role read-only fence 2. **Every cell's teeth were verified
 negatively** — swap the guard for an `exit 0` stub, or inject a fault into each C/D/E cell, and **each one FAILs**.
 
 This document details only the **two A-group cells** below; the script and the measured readings
