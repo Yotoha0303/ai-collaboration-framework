@@ -44,7 +44,7 @@
 | 体量可控 | `(Get-Content ONBOARDING.md).Count` | 中文 **71** 行 / 英文 **71** 行（< 120） |
 | 判据词存在 | `Select-String -Pattern '接入确认'` / `'现状基线'` | 中文 **1** / **2** 处 |
 | 判据词存在（英） | `Select-String -Pattern 'attach check'` / `'status baseline'` | 英文 **1** / **2** 处 |
-| 不破坏既有 40 格 | `powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/self-test.ps1` | 提交前实跑，结果见下方「回填」 |
+| 不破坏既有格数、不引入回归 | `powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/self-test.ps1` | 提交前实跑，结果见下方「回填」（第 1 单元 40 PASS / 0 FAIL；第 2 单元加四格后 43 PASS / 2 FAIL；第 3 单元收尾 **45 PASS / 0 FAIL**） |
 | 编号未撞车（跨全部 ref 并集） | `git ls-tree -r --name-only <ref> -- docs/changes/` × 全部 ref | `docs/changes/` **此前不存在**（`Test-Path` = False），并集为空 ⇒ 取 `001` |
 
 ### 3.2 负向 / 待验证（本单元**未建**判据，如实标注）
