@@ -595,7 +595,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/self-test.ps1
 
 It covers **A–F, 46 cells in six groups**: **A** progress-page guard 13 (incl. `A12`/`A13`: compares
 the **mainline**, not the checked-out `HEAD` — `GAP-031`) · **B** numbering guard 2 ·
-**C** rule-projection 19 (`C1` × 3 · `C2` × 11 anchors · `C3`–`C7`) · **D** dual-runtime parity 4
+**C** rule-projection 20 (`C1` × 3 · `C2` × 11 anchors · `C2b` × 1 · `C3`–`C7`) · **D** dual-runtime parity 4
 (incl. `D4`: both entry files must point at `ONBOARDING.md` and must **not** `@`-import it) ·
 **E** progress-page projection completeness 5 (incl. `E5`: the `业务仓` line in `memory.md` = filesystem
 measurement) · **F** role read-only fence 2. **Every cell's teeth were verified
@@ -617,7 +617,7 @@ are in [`docs/guard-self-test.md`](docs/guard-self-test.md):
 > **`exit 0` + JSON on stdout** (`exit 1` is reserved for the two notice-only channels). A
 > criterion has to look at the **right channel** (D1).
 >
-> ⚠️ **Why the self-test is not wired into `Stop`**: **measured this round at `24.5 s` / `26.7 s`**
+> ⚠️ **Why the self-test is not wired into `Stop`**: **last measured at `30.5 s` / `31.5 s`**
 > (`2026-10-25`; the old `21 s` predates A6–A11), while the two existing hooks
 > time out at 15s/20s — another 20+ s per turn is not worth it, and a slow machine would hit the
 > timeout. **It is a gate you run "after changing a guard or a rule", not a per-turn guard.**

@@ -1178,13 +1178,13 @@ if ($entryPresent.Count -eq 0) {
 # 页名由指针文件一行指定（页名的唯一事实源）
 $ptrPath = Join-Path $RepoRoot '.claude/progress-page.txt'
 $pagePath = $null
-if (Test-Path -LiteralPath $ptrPath) {
+if (Test-AFile $ptrPath) {
     $pn = (Get-Content -LiteralPath $ptrPath -Raw -ErrorAction SilentlyContinue)
     if ($pn) { $pn = $pn.Trim() }
     if ($pn) { $pagePath = Join-Path $RepoRoot $pn }
 }
 
-if (-not $pagePath -or -not (Test-Path -LiteralPath $pagePath)) {
+if (-not $pagePath -or -not (Test-AFile $pagePath)) {
     # 页面不存在 = 尚未初始化，无判据可言（与守卫同口径，AGENTS.md §5）。**不算失败**。
     # ⇒ 这个 SKIP 覆盖 **4 格**：`E1` / `E3` / `E4` / `E2`（它们全在下面的 `else` 里，
     #    页面缺失时**一格都不会跑**）。`E5` **不在**这里 —— 它刻意放在块外（见下方注释）。
@@ -1545,7 +1545,12 @@ foreach ($f in @(Get-RepoFiles '*.md')) {
 # `+1` 仍是 C6 自己（此刻尚未计入）。判据：`Pass + Fail + Skip + 1` 必须等于文档里抄写的总格数。
 # （`C2b` 在引导未装时**计 SKIP**，故不进这里的额外项——它与其它格走同一条分母。）
 $c2bRan = 0
-$actualCells = $script:Pass + $script:Fail + $script:Skip + 1 + $c2bRan   # +1 = C6 自己这一格（此刻尚未计入）$staleTotals = @($foundTotals.Keys | Where-Object { $_ -ne $actualCells } | Sort-Object)
+$actualCells = $script:Pass + $script:Fail + $script:Skip + 1 + $c2bRan   # +1 = C6 自己这一格（此刻尚未计入）
+# ⚠️ **这一行必须独立成行**（`2026-10-26`，`gate-auditor` B2 抓到）：此前它被上一行的行尾注释吞掉，
+# `$staleTotals` **从未被赋值** ⇒ `$null.Count` 在无 `Set-StrictMode` 时为 0 ⇒ 谓词恒真 ⇒ **C6 变成死判据**，
+# 任何数字都对不出红。**这正是本文件反复警告的「判据夹缝」**，而且它恰好在"管所有格数陈述"的那一格上。
+# 教训：判据脚本的**赋值语句**不得与其他语句挤在同一行——注释会静默吃掉它，而症状是"看起来全绿"。
+$staleTotals = @($foundTotals.Keys | Where-Object { $_ -ne $actualCells } | Sort-Object)
 # ⚠️ 谓词里的 `$foundTotals.Count -gt 0` 与 `$staleTotals.Count -eq 0` **必须同时成立**：
 # 枚举塌空时 `$foundTotals` 是**空的**，而"没有任何总数陈述与 $actualCells 不符"**恒真** ⇒
 # 本格会以 `实际 34；文中出现 `（出现集为空）**静默全绿** —— 那正是本次要修的病。
