@@ -15,6 +15,16 @@
 | 流程 | 何时用 | 记忆文件 | 案例库 |
 | --- | --- | --- | --- |
 | `qa` | 需要验证「某条判据是否真有牙」；03 测试环；对任一 PR 做独立测试 | [`qa.md`](qa.md) | [`qa-cases.md`](qa-cases.md) |
+| `gate-audit` | 转段裁决：能否进入下一环、准出是否真正满足 | [`gate-audit.md`](gate-audit.md) | [`gate-audit-cases.md`](gate-audit-cases.md) |
+| `falsify` | 对判据做负向验证；`§4.2` 三跳链第 2 跳 | [`falsify.md`](falsify.md) | [`falsify-cases.md`](falsify-cases.md) |
+| `ledger-sync` | 登记编号 / 写台账 / 足迹锚 / 三处投影同步 | [`ledger-sync.md`](ledger-sync.md) | [`ledger-sync-cases.md`](ledger-sync-cases.md) |
+| `delivery` | 提交 / 推送 / 开 PR / 合并后收尾 | [`delivery.md`](delivery.md) | [`delivery-cases.md`](delivery-cases.md) |
+
+> **没有做成流程记忆的**（刻意的，不是遗漏）：四大纪律 D1–D4 · 门禁矩阵 01–10 · 决策分派 / 任务定位协议
+> —— 它们是**规则 / 判据**，不是可执行步骤；把它做成"流程"会让读者以为它可以被选择性执行。
+> 进度页同步**已机械化**（Stop hook），读流程的人不执行它。
+> 评估依据见 `docs/changes/003-procedure-rollout.md`。
+
 
 > **新增流程**：在本表加一行，并建同名 `<流程>.md` 与 `<流程>-cases.md`。
 > `INDEX.md` **不得**复述任何规范正文——它只做路由。**超过 40 行即视为失控**。
