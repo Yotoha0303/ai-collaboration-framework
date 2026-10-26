@@ -301,6 +301,9 @@ GEMINI.md                        Antigravity thin entry point: @[label](path) pr
 README.en.md                     This file
 LICENSE                          Apache-2.0
 NOTICE                           Copyright and attribution (Apache-2.0 §4(d))
+ONBOARDING.md                    New-user onboarding (read on demand): first step after cloning ·
+                                 the two paths · status-baseline template
+ONBOARDING.en.md                 The same, in English
 
 prompts/
   AI总控.md                      Orchestrator prompt (2-D model: 8 layers × 11 stages)
@@ -490,6 +493,8 @@ These records **are not rewritten**. What happened is an evidence chain, not a t
 
 ## 12. Getting started
 
+> 🚀 **Just cloned it? Read [`ONBOARDING.en.md`](ONBOARDING.en.md) first** — it answers only "what is step one", and once you finish it you need not look again.
+
 1. **Launch from the workspace root**: run `launchers/start_claude.bat` (Windows) or
    `launchers/start_claude.sh` (Linux/macOS). **You must** launch this way — the three lookup
    paths **scan upward only**, and launching from elsewhere makes the framework **silently
@@ -585,13 +590,15 @@ not touch your working tree):
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/self-test.ps1
-# Expect: PASS = 40 / FAIL = 0, exit code 0
+# Expect: PASS = 46 / FAIL = 0, exit code 0
 ```
 
-It covers **A–F, 40 cells in six groups**: **A** progress-page guard 13 (incl. `A12`/`A13`: compares
+It covers **A–F, 46 cells in six groups**: **A** progress-page guard 13 (incl. `A12`/`A13`: compares
 the **mainline**, not the checked-out `HEAD` — `GAP-031`) · **B** numbering guard 2 ·
-**C** rule-projection 16 (`C1` × 2 · `C2` × 9 anchors · `C3`–`C7`) · **D** dual-runtime parity 3 ·
-**E** progress-page projection completeness 4 · **F** role read-only fence 2. **Every cell's teeth were verified
+**C** rule-projection 19 (`C1` × 3 · `C2` × 11 anchors · `C3`–`C7`) · **D** dual-runtime parity 4
+(incl. `D4`: both entry files must point at `ONBOARDING.md` and must **not** `@`-import it) ·
+**E** progress-page projection completeness 5 (incl. `E5`: the `业务仓` line in `memory.md` = filesystem
+measurement) · **F** role read-only fence 2. **Every cell's teeth were verified
 negatively** — swap the guard for an `exit 0` stub, or inject a fault into each C/D/E cell, and **each one FAILs**.
 
 This document details only the **two A-group cells** below; the script and the measured readings
@@ -610,8 +617,9 @@ are in [`docs/guard-self-test.md`](docs/guard-self-test.md):
 > **`exit 0` + JSON on stdout** (`exit 1` is reserved for the two notice-only channels). A
 > criterion has to look at the **right channel** (D1).
 >
-> ⚠️ **Why the self-test is not wired into `Stop`**: it measures ~21 s, while the two existing hooks
-> time out at 15s/20s — another 12 s per turn is not worth it, and a slow machine would hit the
+> ⚠️ **Why the self-test is not wired into `Stop`**: **measured this round at `24.5 s` / `26.7 s`**
+> (`2026-10-25`; the old `21 s` predates A6–A11), while the two existing hooks
+> time out at 15s/20s — another 20+ s per turn is not worth it, and a slow machine would hit the
 > timeout. **It is a gate you run "after changing a guard or a rule", not a per-turn guard.**
 > **This is an explicit trade-off (ledger `DEFER-014`), not an omission.**
 

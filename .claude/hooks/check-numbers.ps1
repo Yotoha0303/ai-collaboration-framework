@@ -154,6 +154,31 @@ try {
         $refs = @($refsCall.Text -split "`n" | Where-Object { $_ -ne '' })
         if ($refs.Count -eq 0) { continue }
 
+        # COLLAPSE local refs with their remote-tracking counterparts (measured
+        # 2026-10-26): `refs/heads/X` and `refs/remotes/origin/X` are the SAME
+        # branch, but they hold DIFFERENT oids whenever a local commit has not
+        # been pushed yet -- which is the normal state during any feature
+        # branch's development. Unioning both raw ref sets therefore reports
+        # `docs/changes/001-*.md` against itself as a "cross-branch collision"
+        # on every unpushed commit: a guard that fires during normal work is a
+        # guard people learn to ignore (D3).
+        # Rule: key by BRANCH LEAF NAME; a local ref shadows the remote-tracking
+        # ref of the same name. Different branch names still compare against
+        # each other -- that is the collision this guard exists to catch.
+        # `refs/remotes/<remote>/HEAD` is a symbolic alias, not a branch: skip it.
+        # The dictionary is Ordinal (case-SENSITIVE) for the same reason the
+        # collision container below is: branch names differing only in case are
+        # two branches on a case-sensitive filesystem.
+        $byLeaf = New-Object 'System.Collections.Generic.Dictionary[string, string]' ([System.StringComparer]::Ordinal)
+        # Local refs first, so they win the "first occurrence" race.
+        foreach ($r in @($refs | Sort-Object { if ($_ -like 'refs/heads/*') { 0 } else { 1 } })) {
+            $leaf = ($r -replace '^refs/heads/', '') -replace '^refs/remotes/[^/]+/', ''
+            if ($leaf -eq 'HEAD') { continue }
+            if (-not $byLeaf.ContainsKey($leaf)) { $byLeaf[$leaf] = $r }
+        }
+        $refs = @($byLeaf.Values)
+        if ($refs.Count -eq 0) { continue }
+
         # Union the CURRENT docs/changes/ listing of every branch (not history:
         # `git log --all --name-only` would include pre-rename names and false-positive).
         #

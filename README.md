@@ -286,6 +286,8 @@ GEMINI.md                        Antigravity 瘦入口：@[label](path) 预加�
 README.en.md                     README 英文版
 LICENSE                          Apache-2.0
 NOTICE                           版权与归属声明（Apache-2.0 §4(d)）
+ONBOARDING.md                    新用户接入引导（按需读）：clone 后第一步 · 两条路径 · 现状基线模板
+ONBOARDING.en.md                 同上，英文版
 
 prompts/
   AI总控.md                      总控必备提示词（二维认知模型 8 层级 × 11 阶段）
@@ -297,7 +299,7 @@ prompts/
   settings.json                  Claude Code Stop hook 配置
   hooks/check-progress.ps1       进度页滞后守卫（fail-closed，见 §九）
   hooks/check-numbers.ps1        编号跨分支撞车守卫（见 §九）
-  hooks/self-test.ps1            **守卫与规则投影的一键自测（40 格）**——沙箱在临时目录、自删（见 §九）
+  hooks/self-test.ps1            **守卫与规则投影的一键自测（46 格）**——沙箱在临时目录、自删（见 §九）
   hooks/README.md                守卫实现细节（按需读）
   progress-page.txt              一行。进度页文件名的唯一事实源
   agents/*.md                    已实例化的角色（**12 类业务角色 + 3 类纪律执行者**）
@@ -451,6 +453,8 @@ Claude Code 的三条查找路径——`AGENTS.md` / `.claude/agents/` / `settin
 
 ## 十二、怎么用
 
+> 🚀 **刚 clone 下来？先读 [`ONBOARDING.md`](ONBOARDING.md)**——它只回答「第一步做什么」，读完即可不再看。
+
 1. **从工作区根启动**：
    - **Claude Code**：跑 `launchers/start_claude.bat`（Windows）或 `launchers/start_claude.sh`（Linux/macOS）——三条查找路径**只向上扫**，从别处启动框架会**静默不存在**（见 §十）。
    - **Antigravity**：直接用 Antigravity 打开工作区根目录（或从工作区根运行 `agy`）——系统会自动发现并加载 `GEMINI.md`、`AGENTS.md` 与 `.agents/hooks.json`。
@@ -528,12 +532,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/check-progress
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/self-test.ps1
-# 期望：PASS = 40 / FAIL = 0，退出码 0
+# 期望：PASS = 46 / FAIL = 0，退出码 0
 ```
 
-它覆盖 **A–F 六组共 40 格**：**A** 进度页守卫 13（含 `A12`/`A13`：比对**主干**而非当前 `HEAD`，`GAP-031`）·
-**B** 编号守卫 2 · **C** 规则投影 16（`C1`×2 · `C2`×9 锚点 · `C3`–`C7`）·
-**D** 双运行时对等 3 · **E** 进度页投影完整性 4 · **F** 角色只读围栏 2。**每一格的牙都做过负向验证**——
+它覆盖 **A–F 六组共 46 格**：**A** 进度页守卫 13（含 `A12`/`A13`：比对**主干**而非当前 `HEAD`，`GAP-031`）·
+**B** 编号守卫 2 · **C** 规则投影 19（`C1`×3 · `C2`×11 锚点 · `C3`–`C7`）·
+**D** 双运行时对等 4（含 `D4`：两入口须指向 `ONBOARDING.md`、且**不得** `@` 导入）·
+**E** 进度页投影完整性 5（含 `E5`：`memory.md` 的「业务仓」行 = 文件系统实测）· **F** 角色只读围栏 2。**每一格的牙都做过负向验证**——
 把守卫换成 `exit 0` 空壳、或对 C/D/E 逐格注入故障，**各自都会 FAIL**。
 
 本文件下面只详述 **A 组的两格**；脚本与实测读数见
@@ -549,8 +554,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/self-test.ps1
 > ⚠️ **别用退出码判断它有没有牙**：block 路径是 **`exit 0` + stdout 的 JSON**
 > （`exit 1` 留给「只提示不阻断」的两条通道）。判据要看**对的那条通道**（D1）。
 >
-> ⚠️ **为什么不把自测挂进 `Stop`**：实测约 21 s，而现有两钩子超时 15s/20s——
-> 每轮再加 12 s 不划算，慢机器会顶到超时。**它是「改守卫 / 改规则后跑一次」的门禁**，
+> ⚠️ **为什么不把自测挂进 `Stop`**：**本次实测 `24.5 s` / `26.7 s`**（`2026-10-25`；旧值 `21 s` 是加 A6–A11 之前的读数），
+> 而现有两钩子超时 15s/20s——每轮再加 20+ s 不划算，慢机器会顶到超时。**它是「改守卫 / 改规则后跑一次」的门禁**，
 > 不是每轮守卫。**这是一个显式取舍（台账 `DEFER-014`），不是遗漏。**
 
 ### 采用它：门禁"语言插槽" + 最小初始化三步
