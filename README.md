@@ -299,7 +299,7 @@ prompts/
   settings.json                  Claude Code Stop hook 配置
   hooks/check-progress.ps1       进度页滞后守卫（fail-closed，见 §九）
   hooks/check-numbers.ps1        编号跨分支撞车守卫（见 §九）
-  hooks/self-test.ps1            **守卫与规则投影的一键自测（45 格）**——沙箱在临时目录、自删（见 §九）
+  hooks/self-test.ps1            **守卫与规则投影的一键自测（46 格）**——沙箱在临时目录、自删（见 §九）
   hooks/README.md                守卫实现细节（按需读）
   progress-page.txt              一行。进度页文件名的唯一事实源
   agents/*.md                    已实例化的角色（**12 类业务角色 + 3 类纪律执行者**）
@@ -532,10 +532,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/check-progress
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/self-test.ps1
-# 期望：PASS = 45 / FAIL = 0，退出码 0
+# 期望：PASS = 46 / FAIL = 0，退出码 0
 ```
 
-它覆盖 **A–F 六组共 45 格**：**A** 进度页守卫 13（含 `A12`/`A13`：比对**主干**而非当前 `HEAD`，`GAP-031`）·
+它覆盖 **A–F 六组共 46 格**：**A** 进度页守卫 13（含 `A12`/`A13`：比对**主干**而非当前 `HEAD`，`GAP-031`）·
 **B** 编号守卫 2 · **C** 规则投影 19（`C1`×3 · `C2`×11 锚点 · `C3`–`C7`）·
 **D** 双运行时对等 4（含 `D4`：两入口须指向 `ONBOARDING.md`、且**不得** `@` 导入）·
 **E** 进度页投影完整性 5（含 `E5`：`memory.md` 的「业务仓」行 = 文件系统实测）· **F** 角色只读围栏 2。**每一格的牙都做过负向验证**——

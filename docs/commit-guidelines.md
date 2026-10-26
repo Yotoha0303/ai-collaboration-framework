@@ -47,7 +47,7 @@
   ```powershell
   powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/self-test.ps1
   ```
-  **必须全量通过（PASS = 45 / FAIL = 0，Exit Code 0）方可提交**。
+  **必须全量通过（PASS = 46 / FAIL = 0，Exit Code 0）方可提交**。
 
 ### 3. 推送前四项硬核验（推送四步法）
 1. **敏感值扫描**：逐值扫描代码与配置文件，绝对不得将 API Key、Token、私钥或明文密码带入提交。

@@ -47,9 +47,9 @@ cd ../backend && go vet ./... && go test -race ./...
 故**守卫改动后若只看"它没吭声"，那什么也没证明**。
 
 ```powershell
-# 一键：45 格，沙箱在临时目录、自删、不碰工作树
+# 一键：46 格，沙箱在临时目录、自删、不碰工作树
 powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/self-test.ps1
-# 期望：PASS = 45 / FAIL = 0，退出码 0
+# 期望：PASS = 46 / FAIL = 0，退出码 0
 ```
 
 | 组 | 格 | 检查什么 |
@@ -69,7 +69,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/self-test.ps1
 表格断列 / `-E`+`\|` / 幻影编号 / 章节数不等 / 误加 `@AGENTS` / 未覆盖退出码 / 台账加号 /
 页面删行 / 只读加 shell / 写方去 shell / 只读删声明 / 入口漏指针或误加 `@ONBOARDING` /
 `memory.md` 业务仓行写错）→ **各自 FAIL、退出码 1**；还原后 **29/29 PASS**
-（**`29/29` 是当时的格数，不是现值**——现值见上方「一键：45 格」；此处按 `AGENTS.md` §5「历史快照不改写」保留）。
+（**`29/29` 是当时的格数，不是现值**——现值见上方「一键：46 格」；此处按 `AGENTS.md` §5「历史快照不改写」保留）。
 
 > ⚠️ **`C2` 只判「判据词在场」，不判「次数相等」**——两侧提及次数可以不同（英文可能换措辞说到同一件事）。
 > **它不等于「内容等价」**：它把盲区从「任意语义反转」收窄到「判据词整体消失」。

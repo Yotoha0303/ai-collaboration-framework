@@ -803,18 +803,19 @@ function Get-BilingualPairs {
     )
 }
 
-# --- ONBOARDING 是否**本仓跟踪**（`2026-10-26`，qa-validator P1-a 修；取代原 `IsFrameworkRepo`）
-# 用途：区分「**没装**」（合法，采用方）与「**装过又被删了**」（缺陷，框架仓）。
-# ⚠️ **必须用 `git ls-files`（索引）而不是 `Test-Path`（工作树）**：本格要抓的正是"工作树里把文件删了/改名了"
-# 这一形态——此时 `Test-Path` 已为假，**只有索引还记着它本该在**。两者之差就是判据本身。
-# ⚠️ **为什么不再用"`GEMINI.md` 存在 ⇔ 框架仓"**：`GEMINI.md` 是 **Antigravity 专属入口**（见其 `:1-4`），
-# 采用方走 Antigravity **恰恰要装它** ⇒ 上一版把采用方误判成框架仓，假红原样复发（实测 `36/4/5`）。
-# 现在的口径**不推断身份**，只问一个可实测的事实：**这个仓的索引里有没有 `ONBOARDING.md`**。
+# --- ONBOARDING 是否**曾经入库**（`2026-10-26`，qa-validator P1-a 修；`falsifier` A1 再修）
+# 用途：区分「**没装**」（合法，采用方）与「**装过又被删了**」（缺陷）。
+# ⚠️ **不能用 `Test-Path`（工作树）**：本格要抓的正是"工作树里删了/改名了"。
+# ⚠️ **也不能用 `git ls-files`（当前索引）**：`falsifier` A1 实测——`git rm --cached` 一步就把索引抹空，
+#    于是 `C1`/`D4` 由双 FAIL 降成 SKIP、**整轮 exit 0**（`39/0/6`）。那是**真正的「用消失来通过」**：
+#    删索引与删文件在观测上应当同义，而它把前者当成了"从没装过"。
+# ⇒ 改为问**提交历史**：`git rev-list --all` 里有没有碰过这两个文件的提交。
+#    它抹不掉——`git rm --cached` 只改当前索引，已提交的历史仍在任何 ref 上。
+# ⚠️ **仍然不是身份推断**：它只回答"这个仓历史上是否提交过它"，不猜"你是谁"。
 $onboardingTracked = $false
 if ($script:GitRepo) {
-    # `.en.md` 也算：只跟踪英文版同样是"装过"，缺另一半要走 FAIL 而不是 SKIP。
-    $lsProbe = Invoke-GitChecked { git -C $script:GitRepo ls-files -- ONBOARDING.md ONBOARDING.en.md 2>$null }
-    $onboardingTracked = ($lsProbe.Exit -eq 0 -and $lsProbe.Text.Trim() -ne '')
+    $histProbe = Invoke-GitChecked { git -C $script:GitRepo rev-list --all --max-count=1 -- ONBOARDING.md ONBOARDING.en.md 2>$null }
+    $onboardingTracked = ($histProbe.Exit -eq 0 -and $histProbe.Text.Trim() -ne '')
 }
 
 
@@ -852,12 +853,12 @@ foreach ($p in Get-BilingualPairs) {
         #   **不在索引里** ⇒ 本仓从没装过 ⇒ SKIP（采用方形态）。
         # 不这样分，我这一版会把「框架仓里删掉两份」从 FAIL 降成 SKIP —— **正是 D3 要防的"用消失来通过"**。
         if ($onboardingTracked) {
-            $script:Fail++; "  FAIL  C1 $($p.Name) 双语文件均缺失（本仓索引里跟踪着 $($p.Zh) ⇒ 是被删掉，不是没装）"
+            $script:Fail++; "  FAIL  C1 $($p.Name) 双语文件均缺失（提交历史里有 $($p.Zh) ⇒ 是被删掉，不是没装）"
             continue
         }
         # 计 **1 格**（`C1 <name>` 自己对）。
         $script:Skip += 1
-        "  SKIP  C1 $($p.Name)：可选双语载体均未安装（本仓索引里也没有）（计 1 格）"
+        "  SKIP  C1 $($p.Name)：可选双语载体均未安装（提交历史里也没有）（计 1 格）"
         continue
     }
     if (-not $zhOk -or -not $enOk) {
@@ -866,8 +867,11 @@ foreach ($p in Get-BilingualPairs) {
     }
     $zh = @(Select-String -LiteralPath $zhFile -Pattern '^#{2,3} ').Count
     $en = @(Select-String -LiteralPath $enFile -Pattern '^#{2,3} ').Count
-    Assert-Cell -Name "C1 $($p.Name) 双语章节数相等（zh=$zh en=$en）" -Expect '两数相等' -Actual ([pscustomobject]@{ Exit = $zh; Stdout = $en }) `
-        -Predicate { $zh -eq $en }
+    # ⚠️ **必须带 `-gt 0` 前提**（`2026-10-26`，`falsifier` A6）：原来只比 `$zh -eq $en` ⇒
+    # 两份同时清空时 `0 = 0` **PASS**，即「空分母当成 100%」（D3 点名的形态）。
+    # 与 `C3`/`C4`/`C5`/`C7`/`D1` 的「输入非空」前提保持同一种写法。
+    Assert-Cell -Name "C1 $($p.Name) 双语章节数相等（zh=$zh en=$en）" -Expect '两数相等且 >0' -Actual ([pscustomobject]@{ Exit = $zh; Stdout = $en }) `
+        -Predicate { $zh -eq $en -and $zh -gt 0 }
 }
 
 # --- C2 · 判据词双语锚点（F7 建议的最小内容判据）
@@ -896,6 +900,39 @@ foreach ($a in $anchors) {
     $ec = @(Select-String -LiteralPath (Join-Path $RepoRoot $a.En) -Pattern ([regex]::Escape($a.EnWord)) -AllMatches).Count
     Assert-Cell -Name "C2 判据词双语在场：「$($a.ZhWord)」/「$($a.EnWord)」（$zc/$ec）" -Expect '两侧均 >0' `
         -Actual ([pscustomobject]@{ Exit = $zc; Stdout = $ec }) -Predicate { $zc -gt 0 -and $ec -gt 0 }
+}
+
+# --- C2b · ONBOARDING 自身的判据词锚点（`2026-10-26`，`falsifier` A2）
+# 为什么补：`C2` 原有 11 条锚点**全部指向 `AGENTS*`**，接入引导那一对只有 `C1` 的章节计数。
+# 实测（`falsifier` A2）：中英**各删同一节** ⇒ `6→5`、`6→5` ⇒ `C1` **PASS**，整整一步引导静默消失。
+# 而 `C2` 的立条理由（「结构判据测不出语义反转」）对引导这一对**同样成立** —— 之前只是没落到它身上。
+# ⚠️ **只在引导装了的时候判**（`Test-AFile` 两份都在）：采用方没装引导时无判据可言，
+#    不加这个前提就会让上一版那种假红从 `C1` 挪到 `C2` 复发（同一条教训）。
+$obZh = Join-Path $RepoRoot 'ONBOARDING.md'
+$obEn = Join-Path $RepoRoot 'ONBOARDING.en.md'
+if ((Test-AFile $obZh) -and (Test-AFile $obEn)) {
+    # **一格判三条锚点**（不拆成三格）：拆开会让总格数 45→48，触发 `C6` 的跨文档同步风暴，
+    # 而这三条承载的是同一件事（"引导的关键步骤还在"）。缺哪条就在输出里点名。
+    $obAnchors = @(
+        [pscustomobject]@{ ZhWord = '接入确认'; EnWord = 'attach check' },
+        [pscustomobject]@{ ZhWord = '现状基线'; EnWord = 'status baseline' },
+        [pscustomobject]@{ ZhWord = '读完即止'; EnWord = 'Read it once, then stop' }
+    )
+    $obBad = @()
+    foreach ($a in $obAnchors) {
+        $zc = @(Select-String -LiteralPath $obZh -Pattern ([regex]::Escape($a.ZhWord)) -AllMatches).Count
+        $ec = @(Select-String -LiteralPath $obEn -Pattern ([regex]::Escape($a.EnWord)) -AllMatches).Count
+        if ($zc -le 0 -or $ec -le 0) { $obBad += "「$($a.ZhWord)」=$zc/「$($a.EnWord)」=$ec" }
+    }
+    Assert-Cell -Name "C2b ONBOARDING 判据词在场（$($obAnchors.Count) 条：接入确认/现状基线/读完即止）" `
+        -Expect '缺失 = 0（中英两侧各自 >0）' `
+        -Actual ([pscustomobject]@{ Exit = $obBad.Count; Stdout = ($obBad -join '; ') }) `
+        -Predicate { $obBad.Count -eq 0 }
+} else {
+    # 采用方没装引导 ⇒ 无判据可言。**必须计 1 格 SKIP**（与其它格同一口径）：
+    # 若只是"不判也不计"，`C6` 的分母会比文档里的总数少 1，采用方恒报「实际 45 / 文中 46」。
+    $script:Skip += 1
+    "  SKIP  C2b：引导两份均未安装（计 1 格）"
 }
 
 # --- C3 · Markdown 表格列数一致（GAP-017 同族第 ③ 名）
@@ -965,7 +1002,7 @@ Assert-Cell -Name 'C4 git grep -E 与 \| 不同现' -Expect '误用 = 0 且扫�
 # 数法：全仓 tracked 文件里出现的 GAP-NNN / DEFER-NNN，逐个到 docs/ledger.md 里找定义行。
 $ledgerPath = Join-Path $RepoRoot 'docs/ledger.md'
 $defined = @{}
-if (Test-Path -LiteralPath $ledgerPath) {
+if (Test-AFile $ledgerPath) {
     foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText($ledgerPath), '^\|\s*\*\*`?(GAP|DEFER)-(\d{3})`?\*\*', 'Multiline')) {
         $defined["$($m.Groups[1].Value)-$($m.Groups[2].Value)"] = $true
     }
@@ -1044,7 +1081,7 @@ $adapterCovered = @(0, 1)
 $guardExits = @{}
 foreach ($g in @('check-progress.ps1', 'check-numbers.ps1')) {
     $gp = Join-Path $RepoRoot ('.claude/hooks/' + $g)
-    if (-not (Test-Path -LiteralPath $gp)) { continue }
+    if (-not (Test-AFile $gp)) { continue }
     foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText($gp), 'exit\s+(\d+)')) {
         $guardExits[[int]$m.Groups[1].Value] = $true
     }
@@ -1276,7 +1313,7 @@ if (-not $pagePath -or -not (Test-Path -LiteralPath $pagePath)) {
     # --- E2 · 页面的「用户待办」条数与源文件一致
     # 源文件不入库、无判据盯着它 —— 改动它不会有任何东西响。本格就是那个"盯着它"的东西。
     $todoSrc = Join-Path $RepoRoot '我要做什么.txt'
-    if (Test-Path -LiteralPath $todoSrc) {
+    if (Test-AFile $todoSrc) {
         $srcIds = @()
         foreach ($l in [System.IO.File]::ReadAllLines($todoSrc)) {
             if ($l -match '^(\d+)、') { $srcIds += [int]$Matches[1] }
@@ -1335,10 +1372,12 @@ if (-not (Test-AFile $memBizPath)) {
     $subRepoNames = @($subRepoNames | Sort-Object)
     $actualBiz = if ($subRepoNames.Count -eq 0) { '未接入' } else { $subRepoNames -join ', ' }
 
-    # ⚠️ **重复行必须报警**（`2026-10-26`，qa-validator P2-f）：`Match` 只取第一条 ⇒
-    #    `业务仓：未接入` + `业务仓：错的仓` 实测 **PASS**（第二条错值不可见）。
-    #    两次投影本身就是"D4 禁止的同一事实两份副本"，故命中 >1 处即 FAIL，并打印全部值。
-    $memBizAll = @([regex]::Matches([System.IO.File]::ReadAllText($memBizPath), '(?m)^业务仓：(.*)$'))
+    # ⚠️ **前缀与冒号都要放宽**（`2026-10-26`，`falsifier` A4）：原式 `^业务仓：` 只认「行首 + 全角冒号」
+    #    实测三种追加形态全部静默通过：`> 业务仓：X`（引用块）· `  业务仓：X`（缩进）· `业务仓: X`（半角冒号）。
+    #    ⇒ 改为 `^[\s>*-]*业务仓\s*[:：]`。**为什么不误报**：`memory.md` 里唯一的叙述句
+    #    「属业务仓的编号空间」**不含冒号**，不命中；判据要求「这一行在声明业务仓的值」，冒号就是那个标记。
+    # ⚠️ **重复行必须报警**：`Match` 只取第一条 ⇒ 第二条错值不可见。两次投影本身就是 D4 禁止的两份副本。
+    $memBizAll = @([regex]::Matches([System.IO.File]::ReadAllText($memBizPath), '(?m)^[\s>*-]*业务仓\s*[:：]\s*(.*)$'))
     $memBiz = if ($memBizAll.Count -gt 0) { $memBizAll[0] } else { $null }
     if ($memBizAll.Count -gt 1) {
         $dups = @($memBizAll | ForEach-Object { $_.Groups[1].Value.Trim() }) -join ' | '
@@ -1504,8 +1543,9 @@ foreach ($f in @(Get-RepoFiles '*.md')) {
 # ⚠️ **分母必须含 `SKIP`**（`2026-10-25`，issue #55）：一个 SKIP 的格**是存在的**，只是此环境无判据。
 # 漏掉它 ⇒ 分母变小 ⇒ **采用方 / 克隆检出（页面与 memory.md 都不存在）恒报「实际 40；文中出现 45」**。
 # `+1` 仍是 C6 自己（此刻尚未计入）。判据：`Pass + Fail + Skip + 1` 必须等于文档里抄写的总格数。
-$actualCells = $script:Pass + $script:Fail + $script:Skip + 1   # +1 = C6 自己这一格（此刻尚未计入）
-$staleTotals = @($foundTotals.Keys | Where-Object { $_ -ne $actualCells } | Sort-Object)
+# （`C2b` 在引导未装时**计 SKIP**，故不进这里的额外项——它与其它格走同一条分母。）
+$c2bRan = 0
+$actualCells = $script:Pass + $script:Fail + $script:Skip + 1 + $c2bRan   # +1 = C6 自己这一格（此刻尚未计入）$staleTotals = @($foundTotals.Keys | Where-Object { $_ -ne $actualCells } | Sort-Object)
 # ⚠️ 谓词里的 `$foundTotals.Count -gt 0` 与 `$staleTotals.Count -eq 0` **必须同时成立**：
 # 枚举塌空时 `$foundTotals` 是**空的**，而"没有任何总数陈述与 $actualCells 不符"**恒真** ⇒
 # 本格会以 `实际 34；文中出现 `（出现集为空）**静默全绿** —— 那正是本次要修的病。
