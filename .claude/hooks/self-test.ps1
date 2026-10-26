@@ -800,6 +800,21 @@ function Get-BilingualPairs {
     )
 }
 
+# --- 判据 / 框架仓标志：`GEMINI.md` 存在 ⇔ **双运行时框架仓**（`2026-10-26`，issue #55）
+# 为什么需要这个标志：`docs/adopting.md` §二「最小初始化三步」只复制 `launchers/` + `.claude/` + `AGENTS*` +
+# `README*`，**不装** `ONBOARDING*` / `CLAUDE.md` / `GEMINI.md`。若那两格仍无条件判 FAIL，
+# 这把尺子就**恰好在"按文档正确初始化"的工作区上变红** —— 而 `adopting.md:72` 明写自测脚本见
+# `docs/guard-self-test.md`，即它**是发给采用方的**。实测（`2026-10-26`，合法采用方工作区）：
+# 改前 `PASS = 35 / FAIL = 5`，其中 `C1 ONBOARDING` 与 `D4` 两条是**本次分支引入**的假红。
+# **为什么用 `GEMINI.md` 而不是"框架文件全在就跳过"**：`D2` 早已把 `GEMINI.md` 的存在当作框架仓前提
+# （见其注释「框架仓里它缺席 = 被删了」），且 `D2` 在采用方工作区**本来就会 FAIL**。故以它为门
+# **不会新增「用消失来通过」的洞**：框架仓里删掉 `GEMINI.md` ⇒ `GEMINI.md` 缺失、`D2` 照样红。
+# ⚠️ **门必须只看 `GEMINI.md`，不得简化成"ONBOARDING 两份都不在就跳过"**：那样在框架仓里删掉两份
+# ONBOARDING 就会**静默通过**。正确语义分两侧写死：
+#   `GEMINI.md` **存在**（框架仓）⇒ 两份 ONBOARDING 必须都在（现状行为，缺一即 FAIL）；
+#   `GEMINI.md` **不存在**（采用方）⇒ SKIP（无判据可言）。
+$script:IsFrameworkRepo = Test-Path -LiteralPath (Join-Path $RepoRoot 'GEMINI.md')
+
 # --- C1 · 双语章节结构（GAP-022 的判据）
 # 单测这一格【不充分】：它只证明「节的数目与层级对上了」，证明不了「内容等价」。
 # 故 C2 必须一起跑 —— 这与 A1/A2 是同一个道理（结构绿 ≠ 内容绿）。
@@ -807,6 +822,15 @@ foreach ($p in Get-BilingualPairs) {
     $zhFile = Join-Path $RepoRoot $p.Zh
     $enFile = Join-Path $RepoRoot $p.En
     if (-not (Test-Path -LiteralPath $zhFile) -or -not (Test-Path -LiteralPath $enFile)) {
+        # 采用方工作区未装接入引导 ⇒ 无判据可言（门与理由见上方 `$script:IsFrameworkRepo`）。
+        # `ONBOARDING` 是 `adopting.md` §二**不要求**安装的按需文件；AGENTS / README 那两对不在本分支。
+        if ($p.Name -eq 'ONBOARDING' -and -not $script:IsFrameworkRepo) {
+            # 计 **1 格**（`C1 ONBOARDING` 自己对），触发条件：**双语文档至少缺一份** 且 `GEMINI.md` 不存在。
+            # 两份都在时走下面的正常判据（采用方若装了引导，照样要受查）。
+            $script:Skip += 1
+            "  SKIP  C1 $($p.Name)：采用方工作区未装接入引导（GEMINI.md 不存在）（计 1 格）"
+            continue
+        }
         $script:Fail++; "  FAIL  C1 $($p.Name) 双语文件缺失"
         continue
     }
@@ -1006,45 +1030,59 @@ Assert-Cell -Name "D3 守卫退出码 ⊆ adapter 覆盖（守卫用 $($guardExi
 # **两种形态都要挡**：`@ONBOARDING.md`（裸路径）与 `@[label](ONBOARDING.md)`（Markdown 链接式导入）。
 # ⚠️ 前提：**两个文件都必须存在**（同 D2 的教训）——若只断言"命中 = 0"，
 # **把入口文件删掉就能通过**，那是「用消失来通过」。
+# ⚠️ **门：`GEMINI.md` 存在 ⇔ 双运行时框架仓**（`2026-10-26`，issue #55；门与理由见 C1 上方的
+# `$script:IsFrameworkRepo`）。采用方按 `adopting.md` §二最小初始化时**两个入口都不装** ⇒ 本格无判据可言，
+# 改判 SKIP（改前是假红：实测合法采用方工作区 `FAIL  D4 …`，属本分支引入）。
+# **为什么这不会打开「用消失来通过」的洞**：框架仓里删掉 `GEMINI.md` ⇒ `$script:IsFrameworkRepo` 为假、
+# 本格转 SKIP —— 但同一份文件缺失**必然令 `D2` FAIL**（`D2` 的谓词含 `$giExists`），哨兵仍在。
+# 判据（已实测，见 `docs/changes/001-onboarding-first-run.md` 第 6 单元）：删 `GEMINI.md` ⇒ `D4` SKIP **且** `D2` FAIL。
 $entryFiles = @('CLAUDE.md', 'GEMINI.md')
 $entryBad = @()
-foreach ($ef in $entryFiles) {
-    $ep = Join-Path $RepoRoot $ef
-    if (-not (Test-Path -LiteralPath $ep)) { $entryBad += "$ef 不存在"; continue }
-    $etxt = [System.IO.File]::ReadAllText($ep)
-    if ($etxt -notmatch 'ONBOARDING\.md') { $entryBad += "$ef 未指向 ONBOARDING.md" }
+if (-not $script:IsFrameworkRepo) {
+    # 计 **1 格**（`D4` 自己）。触发条件：`GEMINI.md` 不存在（= 非双运行时框架仓）。
+    # 只判 `GEMINI.md` 是刻意的：`CLAUDE.md` 与 `GEMINI.md` 在 `adopting.md` 的最小初始化里都不装，
+    # 而"框架仓"的机械标志只有 `GEMINI.md` 一个（`D2` 已用它作前提）。
+    $script:Skip += 1
+    "  SKIP  D4：GEMINI.md 不存在（采用方工作区，未装两个入口）（计 1 格）"
+} else {
+    foreach ($ef in $entryFiles) {
+        $ep = Join-Path $RepoRoot $ef
+        if (-not (Test-Path -LiteralPath $ep)) { $entryBad += "$ef 不存在"; continue }
+        $etxt = [System.IO.File]::ReadAllText($ep)
+        if ($etxt -notmatch 'ONBOARDING\.md') { $entryBad += "$ef 未指向 ONBOARDING.md" }
 
-    # --- ② 左边界：`@` 只能是【行首或空白之后】的 `@`（`2026-10-25`，issue #55）
-    # 真导入只有 `@path` / `@[label](path)` 两种形态，`@` 前面**不会紧贴**别的字符。
-    # **原判据 `@[^\n]*ONBOARDING` 没有左边界** ⇒ 入口里出现 `a@b.com`、且**同一行**提到
-    # `ONBOARDING.md` 就误报 FAIL（qa-validator 已复现；本轮实测注入确认）。
-    # **误报比漏报更糟**：它会教人忽略这条判据（D3）。行内邮箱的 `@` 前面是 `a`（非空白）⇒ 不再命中。
-    foreach ($m in [regex]::Matches($etxt, '(?m)(^|\s)@[^\n]*ONBOARDING')) { $entryBad += "$ef 出现 @ 导入：$($m.Value.Trim())" }
+        # --- ② 左边界：`@` 只能是【行首或空白之后】的 `@`（`2026-10-25`，issue #55）
+        # 真导入只有 `@path` / `@[label](path)` 两种形态，`@` 前面**不会紧贴**别的字符。
+        # **原判据 `@[^\n]*ONBOARDING` 没有左边界** ⇒ 入口里出现 `a@b.com`、且**同一行**提到
+        # `ONBOARDING.md` 就误报 FAIL（qa-validator 已复现；本轮实测注入确认）。
+        # **误报比漏报更糟**：它会教人忽略这条判据（D3）。行内邮箱的 `@` 前面是 `a`（非空白）⇒ 不再命中。
+        foreach ($m in [regex]::Matches($etxt, '(?m)(^|\s)@[^\n]*ONBOARDING')) { $entryBad += "$ef 出现 @ 导入：$($m.Value.Trim())" }
 
-    # --- ③ 指针必须指向【真实存在】的文件（`2026-10-25`，issue #55）
-    # 原来只断言"文中出现 ONBOARDING.md"——把 `CLAUDE.md` 里的 `ONBOARDING.md` 改成
-    # `docs/ONBOARDING.md`（该文件**不存在**）**照样 PASS**：幻影路径假绿（本框架真实抓到过这一族）。
-    # **取舍（显式，别当它是疏漏）**：抽取 `ONBOARDING*.md` 的**前置路径段**逐个 `Test-Path`，
-    # 判据取「**至少有一个引用能解析到真实文件**」，而**不是**"每个引用都必须存在" ——
-    # 入口里的**叙述性文字**（例如"它指向 `ONBOARDING.md` 的说明"）与**真指针**在文本上不可分，
-    # 逐个强判会把合法叙述报成违规（D3：误报的判据比没有判据更糟）。
-    # **代价（如实）**：因此「一个真指针 + 另一处幻影提及」仍会通过。本格保证的是
-    # 「入口指向的东西**至少有一个真的在那儿**」，不保证每一个都真。
-    # 左负向前瞻 `(?<![\w./-])` 保证 `docs/ONBOARDING.md` 只被整体取一次（不会另外再匹配出裸 `ONBOARDING.md`）。
-    $ptrRefs = @(
-        [regex]::Matches($etxt, '(?<![\w./-])((?:\.{0,2}/)?(?:[\w.-]+/)*ONBOARDING(?:\.en)?\.md)(?![\w.-])') |
-            ForEach-Object { $_.Groups[1].Value }
-    )
-    $ptrOk = 0
-    foreach ($pr in $ptrRefs) { if (Test-Path -LiteralPath (Join-Path $RepoRoot $pr)) { $ptrOk++ } }
-    if ($ptrRefs.Count -gt 0 -and $ptrOk -eq 0) {
-        $entryBad += "$ef 的 ONBOARDING 指针解析不到真实文件（$($ptrRefs -join ', ')）"
+        # --- ③ 指针必须指向【真实存在】的文件（`2026-10-25`，issue #55）
+        # 原来只断言"文中出现 ONBOARDING.md"——把 `CLAUDE.md` 里的 `ONBOARDING.md` 改成
+        # `docs/ONBOARDING.md`（该文件**不存在**）**照样 PASS**：幻影路径假绿（本框架真实抓到过这一族）。
+        # **取舍（显式，别当它是疏漏）**：抽取 `ONBOARDING*.md` 的**前置路径段**逐个 `Test-Path`，
+        # 判据取「**至少有一个引用能解析到真实文件**」，而**不是**"每个引用都必须存在" ——
+        # 入口里的**叙述性文字**（例如"它指向 `ONBOARDING.md` 的说明"）与**真指针**在文本上不可分，
+        # 逐个强判会把合法叙述报成违规（D3：误报的判据比没有判据更糟）。
+        # **代价（如实）**：因此「一个真指针 + 另一处幻影提及」仍会通过。本格保证的是
+        # 「入口指向的东西**至少有一个真的在那儿**」，不保证每一个都真。
+        # 左负向前瞻 `(?<![\w./-])` 保证 `docs/ONBOARDING.md` 只被整体取一次（不会另外再匹配出裸 `ONBOARDING.md`）。
+        $ptrRefs = @(
+            [regex]::Matches($etxt, '(?<![\w./-])((?:\.{0,2}/)?(?:[\w.-]+/)*ONBOARDING(?:\.en)?\.md)(?![\w.-])') |
+                ForEach-Object { $_.Groups[1].Value }
+        )
+        $ptrOk = 0
+        foreach ($pr in $ptrRefs) { if (Test-Path -LiteralPath (Join-Path $RepoRoot $pr)) { $ptrOk++ } }
+        if ($ptrRefs.Count -gt 0 -and $ptrOk -eq 0) {
+            $entryBad += "$ef 的 ONBOARDING 指针解析不到真实文件（$($ptrRefs -join ', ')）"
+        }
     }
+    Assert-Cell -Name "D4 两入口含 ONBOARDING.md 指针且不 @ 导入（$($entryFiles.Count) 个入口）" `
+        -Expect '问题 = 0（两文件均存在 · 均含指针 · 指针至少一个可解析 · 均无 @ 导入）' `
+        -Actual ([pscustomobject]@{ Exit = $entryBad.Count; Stdout = ($entryBad -join '; ') }) `
+        -Predicate { $entryBad.Count -eq 0 }
 }
-Assert-Cell -Name "D4 两入口含 ONBOARDING.md 指针且不 @ 导入（$($entryFiles.Count) 个入口）" `
-    -Expect '问题 = 0（两文件均存在 · 均含指针 · 指针至少一个可解析 · 均无 @ 导入）' `
-    -Actual ([pscustomobject]@{ Exit = $entryBad.Count; Stdout = ($entryBad -join '; ') }) `
-    -Predicate { $entryBad.Count -eq 0 }
 
 # ================================================================ E · 进度页投影完整性
 # 台账是唯一事实源，进度页是它的【展示投影】。投影漏条 → 按页面执行任务的人【直接漏掉任务】，
