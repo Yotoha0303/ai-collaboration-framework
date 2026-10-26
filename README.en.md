@@ -590,12 +590,12 @@ not touch your working tree):
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/self-test.ps1
-# Expect: PASS = 46 / FAIL = 0, exit code 0
+# Expect: PASS = 48 / FAIL = 0, exit code 0
 ```
 
-It covers **A–F, 46 cells in six groups**: **A** progress-page guard 13 (incl. `A12`/`A13`: compares
+It covers **A–F, 48 cells in six groups**: **A** progress-page guard 13 (incl. `A12`/`A13`: compares
 the **mainline**, not the checked-out `HEAD` — `GAP-031`) · **B** numbering guard 2 ·
-**C** rule-projection 20 (`C1` × 3 · `C2` × 11 anchors · `C2b` × 1 · `C3`–`C7`) · **D** dual-runtime parity 4
+**C** rule-projection 22 (`C1` × 3 · `C2` × 11 anchors · `C2b` × 1 · `C3`–`C9`) · **D** dual-runtime parity 4
 (incl. `D4`: both entry files must point at `ONBOARDING.md` and must **not** `@`-import it) ·
 **E** progress-page projection completeness 5 (incl. `E5`: the `业务仓` line in `memory.md` = filesystem
 measurement) · **F** role read-only fence 2. **Every cell's teeth were verified
