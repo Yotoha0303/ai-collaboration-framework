@@ -532,11 +532,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/check-progress
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/self-test.ps1
-# 期望：PASS = 46 / FAIL = 0，退出码 0
+# 期望：PASS = 48 / FAIL = 0，退出码 0
 ```
 
-它覆盖 **A–F 六组共 46 格**：**A** 进度页守卫 13（含 `A12`/`A13`：比对**主干**而非当前 `HEAD`，`GAP-031`）·
-**B** 编号守卫 2 · **C** 规则投影 20（`C1`×3 · `C2`×11 锚点 · `C2b`×1 · `C3`–`C7`）·
+它覆盖 **A–F 六组共 48 格**：**A** 进度页守卫 13（含 `A12`/`A13`：比对**主干**而非当前 `HEAD`，`GAP-031`）·
+**B** 编号守卫 2 · **C** 规则投影 22（`C1`×3 · `C2`×11 锚点 · `C2b`×1 · `C3`–`C9`）·
 **D** 双运行时对等 4（含 `D4`：两入口须指向 `ONBOARDING.md`、且**不得** `@` 导入）·
 **E** 进度页投影完整性 5（含 `E5`：`memory.md` 的「业务仓」行 = 文件系统实测）· **F** 角色只读围栏 2。**每一格的牙都做过负向验证**——
 把守卫换成 `exit 0` 空壳、或对 C/D/E 逐格注入故障，**各自都会 FAIL**。

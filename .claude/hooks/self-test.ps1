@@ -1513,6 +1513,61 @@ Assert-Cell -Name "C7 .ps1 无「仅靠大小写区分」的变量名（扫到 $
     -Actual ([pscustomobject]@{ Exit = $V_CASE_HITS.Count; Stdout = ($V_CASE_HITS -join '; ') }) `
     -Predicate { $V_CASE_HITS.Count -eq 0 -and $V_Ps1Count -gt 0 }
 
+# --- C8 · 流程记忆的索引与文件一致（`2026-10-26`，issue #62）
+# 为什么要有它：`docs/procedures/INDEX.md` 是**路由**——它列出的每个流程文件都必须真实存在。
+# 否则读者按索引去读，读到的是**幻影路径**（本框架真实抓到过这一族：`GAP-016`）。
+# 判据：索引里 `<流程>.md` / `<流程>-cases.md` 的每个引用，`Test-AFile` 必须为真。
+$procIdx = Join-Path $RepoRoot 'docs/procedures/INDEX.md'
+# 索引不存在 = 本工作区没装流程记忆（采用方的合法状态）⇒ 无判据可言，计 1 格 SKIP。
+if (-not (Test-AFile $procIdx)) {
+    $script:Skip += 1
+    "  SKIP  C8：docs/procedures/INDEX.md 不存在（计 1 格）"
+} else {
+    $procRefs = @(
+        [regex]::Matches([System.IO.File]::ReadAllText($procIdx), '\]\(([\w.-]+\.md)\)') |
+            ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
+    )
+    $procBad = @($procRefs | Where-Object { -not (Test-AFile (Join-Path $RepoRoot ('docs/procedures/' + $_))) })
+    Assert-Cell -Name "C8 流程索引引用的文件都存在（$($procRefs.Count) 个引用）" `
+        -Expect '缺失 = 0 且引用数 > 0' `
+        -Actual ([pscustomobject]@{ Exit = $procBad.Count; Stdout = ($procBad -join '; ') }) `
+        -Predicate { $procBad.Count -eq 0 -and $procRefs.Count -gt 0 }
+}
+
+# --- C9 · 每个案例都含非空的「前提」一节（`2026-10-26`，issue #62）
+# 为什么要有它：案例库的可用性判据是「前提清单逐条核对」。**没有前提的案例无法被判定可行与否**，
+# 它只会变成"读到了就照做"——而那正是 issue #61 要防的形态。
+# 判据：每个 `### 案例` 段落里至少有一行 `- [ ]`（可机械核对的条目）。
+# ⚠️ **必须直接扫目录，不能用 `Get-RepoFiles`**（它在本仓走 `git ls-files`，只列**已跟踪**文件）：
+# 新建的案例库在 `git add` 之前是 untracked ⇒ 本格会 SKIP ⇒ 「没扫」冒充「没问题」（D3）。
+# 判据要的是「目录里有没有案例库」，那与索引无关。
+$caseDir = Join-Path $RepoRoot 'docs/procedures'
+$caseFiles = @()
+if (Test-Path -LiteralPath $caseDir) {
+    $caseFiles = @(Get-ChildItem -LiteralPath $caseDir -Filter '*-cases.md' -File -Force -ErrorAction SilentlyContinue |
+        ForEach-Object { 'docs/procedures/' + $_.Name })
+}
+if ($caseFiles.Count -eq 0) {
+    $script:Skip += 1
+    "  SKIP  C9：docs/procedures/ 下没有案例库文件（计 1 格）"
+} else {
+    $caseBad = @()
+    foreach ($cf in $caseFiles) {
+        $cfp = Join-Path $RepoRoot $cf
+        if (-not (Test-AFile $cfp)) { continue }
+        $ctxt = [System.IO.File]::ReadAllText($cfp)
+        # 按 `### 案例` 切段；每段必须含至少一条 `- [ ]`
+        $segs = @([regex]::Split($ctxt, '(?m)^### 案例') | Select-Object -Skip 1)
+        if ($segs.Count -eq 0) { $caseBad += "$cf 没有任何「### 案例」段落"; continue }
+        for ($k = 0; $k -lt $segs.Count; $k++) {
+            if ($segs[$k] -notmatch '(?m)^\s*-\s*\[ \]') { $caseBad += "$cf 第 $($k+1) 个案例缺「前提」清单（无 '- [ ]' 行）" }
+        }
+    }
+    Assert-Cell -Name "C9 每个案例都含可核对的前提清单（$($caseFiles.Count) 个案例文件）" `
+        -Expect '违规 = 0 且案例文件数 > 0' `
+        -Actual ([pscustomobject]@{ Exit = $caseBad.Count; Stdout = ($caseBad -join '; ') }) `
+        -Predicate { $caseBad.Count -eq 0 -and $caseFiles.Count -gt 0 }
+}
 # --- C6 · 全仓「格数总数」陈述一致（2026-10-15 补；**口径经两次收窄**）
 # 为什么要有它：格数被抄在 8 个文件里，**没有任何东西让它们同步** —— 同一轮里我因此错了 4 次。
 #
