@@ -792,46 +792,76 @@ finally { if (-not $KeepSandbox) { Remove-Item -Recurse -Force $sbC -ErrorAction
 
 function Get-BilingualPairs {
     return @(
-        [pscustomobject]@{ Zh = 'AGENTS.md'; En = 'AGENTS.en.md'; Name = 'AGENTS' },
-        [pscustomobject]@{ Zh = 'README.md'; En = 'README.en.md'; Name = 'README' },
+        # `Required = $true`：`adopting.md` §二「最小初始化」**要求**复制到位的载体 —— 两份都缺也判 FAIL，
+        # **不得**因为"没装"就跳过（那会让采用方删掉 `AGENTS*` 反而更绿）。
+        [pscustomobject]@{ Zh = 'AGENTS.md'; En = 'AGENTS.en.md'; Name = 'AGENTS'; Required = $true },
+        [pscustomobject]@{ Zh = 'README.md'; En = 'README.en.md'; Name = 'README'; Required = $true },
         # `2026-10-25` 补（issue #55）：接入引导也是【双语成对】分发的，且它承载§0.0 的
         # 「先问位置、再接入」流程 —— 与 AGENTS / README 同属"两份读者各读一份"的载体。
-        [pscustomobject]@{ Zh = 'ONBOARDING.md'; En = 'ONBOARDING.en.md'; Name = 'ONBOARDING' }
+        # **但它是按需件**：`adopting.md` §二不要求安装 ⇒ `Required = $false`，两份都不在时 SKIP。
+        [pscustomobject]@{ Zh = 'ONBOARDING.md'; En = 'ONBOARDING.en.md'; Name = 'ONBOARDING'; Required = $false }
     )
 }
 
-# --- 判据 / 框架仓标志：`GEMINI.md` 存在 ⇔ **双运行时框架仓**（`2026-10-26`，issue #55）
-# 为什么需要这个标志：`docs/adopting.md` §二「最小初始化三步」只复制 `launchers/` + `.claude/` + `AGENTS*` +
-# `README*`，**不装** `ONBOARDING*` / `CLAUDE.md` / `GEMINI.md`。若那两格仍无条件判 FAIL，
-# 这把尺子就**恰好在"按文档正确初始化"的工作区上变红** —— 而 `adopting.md:72` 明写自测脚本见
-# `docs/guard-self-test.md`，即它**是发给采用方的**。实测（`2026-10-26`，合法采用方工作区）：
-# 改前 `PASS = 35 / FAIL = 5`，其中 `C1 ONBOARDING` 与 `D4` 两条是**本次分支引入**的假红。
-# **为什么用 `GEMINI.md` 而不是"框架文件全在就跳过"**：`D2` 早已把 `GEMINI.md` 的存在当作框架仓前提
-# （见其注释「框架仓里它缺席 = 被删了」），且 `D2` 在采用方工作区**本来就会 FAIL**。故以它为门
-# **不会新增「用消失来通过」的洞**：框架仓里删掉 `GEMINI.md` ⇒ `GEMINI.md` 缺失、`D2` 照样红。
-# ⚠️ **门必须只看 `GEMINI.md`，不得简化成"ONBOARDING 两份都不在就跳过"**：那样在框架仓里删掉两份
-# ONBOARDING 就会**静默通过**。正确语义分两侧写死：
-#   `GEMINI.md` **存在**（框架仓）⇒ 两份 ONBOARDING 必须都在（现状行为，缺一即 FAIL）；
-#   `GEMINI.md` **不存在**（采用方）⇒ SKIP（无判据可言）。
-$script:IsFrameworkRepo = Test-Path -LiteralPath (Join-Path $RepoRoot 'GEMINI.md')
+# --- ONBOARDING 是否**本仓跟踪**（`2026-10-26`，qa-validator P1-a 修；取代原 `IsFrameworkRepo`）
+# 用途：区分「**没装**」（合法，采用方）与「**装过又被删了**」（缺陷，框架仓）。
+# ⚠️ **必须用 `git ls-files`（索引）而不是 `Test-Path`（工作树）**：本格要抓的正是"工作树里把文件删了/改名了"
+# 这一形态——此时 `Test-Path` 已为假，**只有索引还记着它本该在**。两者之差就是判据本身。
+# ⚠️ **为什么不再用"`GEMINI.md` 存在 ⇔ 框架仓"**：`GEMINI.md` 是 **Antigravity 专属入口**（见其 `:1-4`），
+# 采用方走 Antigravity **恰恰要装它** ⇒ 上一版把采用方误判成框架仓，假红原样复发（实测 `36/4/5`）。
+# 现在的口径**不推断身份**，只问一个可实测的事实：**这个仓的索引里有没有 `ONBOARDING.md`**。
+$onboardingTracked = $false
+if ($script:GitRepo) {
+    # `.en.md` 也算：只跟踪英文版同样是"装过"，缺另一半要走 FAIL 而不是 SKIP。
+    $lsProbe = Invoke-GitChecked { git -C $script:GitRepo ls-files -- ONBOARDING.md ONBOARDING.en.md 2>$null }
+    $onboardingTracked = ($lsProbe.Exit -eq 0 -and $lsProbe.Text.Trim() -ne '')
+}
+
+
+# ⚠️ `Test-Path` 对**目录**也返回真 ⇒ 紧接着的 `[IO.File]::ReadAllText` 抛 `UnauthorizedAccessException`，
+# 整把尺子在那一格**中止**、连小结都不打。实测（`GEMINI.md` 做成目录）：D1 处崩，C2 之后一格不跑。
+# **缺前置必须变成「那一格失败」，不是「整把尺子死」**（AGENTS.md §3 第 4 段）。
+function Test-AFile {
+    param([string]$Path)
+    if (-not (Test-Path -LiteralPath $Path)) { return $false }
+    return -not (Get-Item -LiteralPath $Path -Force).PSIsContainer
+}
 
 # --- C1 · 双语章节结构（GAP-022 的判据）
 # 单测这一格【不充分】：它只证明「节的数目与层级对上了」，证明不了「内容等价」。
 # 故 C2 必须一起跑 —— 这与 A1/A2 是同一个道理（结构绿 ≠ 内容绿）。
+#
+# ⚠️ **缺文件的处置按「这一对装没装」定，不按「本仓是不是框架仓」定**（`2026-10-26`，qa-validator P1-a 修）：
+# 上一版用 `GEMINI.md` 存在与否当「框架仓」的门，**判据取错了**——`GEMINI.md` 是 **Antigravity 专属入口**
+# （见其 `:1-4`），采用方走 Antigravity **恰恰要装它** ⇒ 被判成框架仓、假红原样复发（实测 `36/4/5`）。
+# 现在的语义**不依赖身份推断**，只看这一对文件在不在，并区分它是不是**必需**载体（见 `Get-BilingualPairs`）：
+#   `Required` 且缺任一份 ⇒ FAIL（`adopting.md` §二要求复制的载体缺了）
+#   非必需 且两份都在 ⇒ 比章节数（正常判据）
+#   非必需 且缺一份   ⇒ FAIL（双语成对分发的载体**缺一半**，这本身就是缺陷）
+#   非必需 且两份都不在 ⇒ SKIP（该可选载体未安装 ⇒ 无判据可言）。采用方按 §二最小初始化即此形态。
+# **这不会打开「用消失来通过」的洞**：把两份 ONBOARDING 都删掉 ⇒ 本格 SKIP，
+# 但 `D4` 的「指针必须解析到真实文件」会 FAIL（已实测：`38 PASS / 2 FAIL`）。哨兵在邻格。
 foreach ($p in Get-BilingualPairs) {
     $zhFile = Join-Path $RepoRoot $p.Zh
     $enFile = Join-Path $RepoRoot $p.En
-    if (-not (Test-Path -LiteralPath $zhFile) -or -not (Test-Path -LiteralPath $enFile)) {
-        # 采用方工作区未装接入引导 ⇒ 无判据可言（门与理由见上方 `$script:IsFrameworkRepo`）。
-        # `ONBOARDING` 是 `adopting.md` §二**不要求**安装的按需文件；AGENTS / README 那两对不在本分支。
-        if ($p.Name -eq 'ONBOARDING' -and -not $script:IsFrameworkRepo) {
-            # 计 **1 格**（`C1 ONBOARDING` 自己对），触发条件：**双语文档至少缺一份** 且 `GEMINI.md` 不存在。
-            # 两份都在时走下面的正常判据（采用方若装了引导，照样要受查）。
-            $script:Skip += 1
-            "  SKIP  C1 $($p.Name)：采用方工作区未装接入引导（GEMINI.md 不存在）（计 1 格）"
+    $zhOk = Test-AFile $zhFile
+    $enOk = Test-AFile $enFile
+    if (-not $zhOk -and -not $enOk -and -not $p.Required) {
+        # 两份都不在时，**再问一句"它本来该在吗"**（`2026-10-26` 补，防我自己引入的"删掉即通过"）：
+        #   `ONBOARDING.md` **在 git 索引里** ⇒ 本仓**装过它** ⇒ 现在不见 = **被删了** ⇒ FAIL；
+        #   **不在索引里** ⇒ 本仓从没装过 ⇒ SKIP（采用方形态）。
+        # 不这样分，我这一版会把「框架仓里删掉两份」从 FAIL 降成 SKIP —— **正是 D3 要防的"用消失来通过"**。
+        if ($onboardingTracked) {
+            $script:Fail++; "  FAIL  C1 $($p.Name) 双语文件均缺失（本仓索引里跟踪着 $($p.Zh) ⇒ 是被删掉，不是没装）"
             continue
         }
-        $script:Fail++; "  FAIL  C1 $($p.Name) 双语文件缺失"
+        # 计 **1 格**（`C1 <name>` 自己对）。
+        $script:Skip += 1
+        "  SKIP  C1 $($p.Name)：可选双语载体均未安装（本仓索引里也没有）（计 1 格）"
+        continue
+    }
+    if (-not $zhOk -or -not $enOk) {
+        $script:Fail++; "  FAIL  C1 $($p.Name) 双语文件缺一半（$($p.Zh)=$zhOk · $($p.En)=$enOk）"
         continue
     }
     $zh = @(Select-String -LiteralPath $zhFile -Pattern '^#{2,3} ').Count
@@ -882,7 +912,7 @@ $tableFiles = @(Get-RepoFiles '*.md')
 $tableCount = 0; $tableBad = @()
 foreach ($f in $tableFiles) {
     $fp = Join-Path $RepoRoot $f
-    if (-not (Test-Path -LiteralPath $fp)) { continue }
+    if (-not (Test-AFile $fp)) { continue }
     $lines = [System.IO.File]::ReadAllLines($fp)
     $inTable = $false; $expCols = 0
     for ($i = 0; $i -lt $lines.Count; $i++) {
@@ -908,7 +938,7 @@ Assert-Cell -Name "C3 Markdown 表格列数一致（$tableCount 张表）" -Expe
 $grepBad = @()
 foreach ($f in $tableFiles) {
     $fp = Join-Path $RepoRoot $f
-    if (-not (Test-Path -LiteralPath $fp)) { continue }
+    if (-not (Test-AFile $fp)) { continue }
     $lines = [System.IO.File]::ReadAllLines($fp)
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $l = $lines[$i]
@@ -943,7 +973,7 @@ if (Test-Path -LiteralPath $ledgerPath) {
 $phantom = @()
 foreach ($f in $tableFiles) {
     $fp = Join-Path $RepoRoot $f
-    if (-not (Test-Path -LiteralPath $fp)) { continue }
+    if (-not (Test-AFile $fp)) { continue }
     $txt = [System.IO.File]::ReadAllText($fp)
     foreach ($m in [regex]::Matches($txt, '\b(GAP|DEFER)-(\d{3})\b')) {
         $id = "$($m.Groups[1].Value)-$($m.Groups[2].Value)"
@@ -972,7 +1002,8 @@ Assert-Cell -Name "C5 编号引用完整（台账定义了 $($defined.Count) 条
 function Get-HeadingLines {
     param([string]$Path)
     $p = Join-Path $RepoRoot $Path
-    if (-not (Test-Path -LiteralPath $p)) { return @() }
+    # `Test-AFile` 而非 `Test-Path`（P2-g）：后者对**目录**也返回真，`Select-String` 随即抛异常、整脚本中止。
+    if (-not (Test-AFile $p)) { return @() }
     return @(Select-String -LiteralPath $p -Pattern '^#{2,3} ' | ForEach-Object { $_.Line })
 }
 
@@ -988,7 +1019,10 @@ Assert-Cell -Name "D1 CLAUDE.md 与 GEMINI.md 章节数相等（$($zhIn.Count)/$
 # 这一格防的是"为了对等而误加 @AGENTS" —— 那会让规则源静默丢一半。
 $gi = Join-Path $RepoRoot 'GEMINI.md'
 $inlineAgents = 0
-$giExists = Test-Path -LiteralPath $gi
+# `Test-AFile` 而非 `Test-Path`（P2-g）：`GEMINI.md` 做成目录时，`Select-String` 会抛
+# `UnauthorizedAccessException` 并**中止整把尺子**（实测：D1 处崩，C2 之后一格不跑、无小结）。
+# 用 `Test-AFile` 后同一注入变成「D1/D2 各判 FAIL」，其余格照常跑完并打小结。
+$giExists = Test-AFile $gi
 if ($giExists) {
     $inlineAgents = @(Select-String -LiteralPath $gi -Pattern '@\[?\s*AGENTS' -AllMatches).Count
 }
@@ -1030,32 +1064,44 @@ Assert-Cell -Name "D3 守卫退出码 ⊆ adapter 覆盖（守卫用 $($guardExi
 # **两种形态都要挡**：`@ONBOARDING.md`（裸路径）与 `@[label](ONBOARDING.md)`（Markdown 链接式导入）。
 # ⚠️ 前提：**两个文件都必须存在**（同 D2 的教训）——若只断言"命中 = 0"，
 # **把入口文件删掉就能通过**，那是「用消失来通过」。
-# ⚠️ **门：`GEMINI.md` 存在 ⇔ 双运行时框架仓**（`2026-10-26`，issue #55；门与理由见 C1 上方的
-# `$script:IsFrameworkRepo`）。采用方按 `adopting.md` §二最小初始化时**两个入口都不装** ⇒ 本格无判据可言，
-# 改判 SKIP（改前是假红：实测合法采用方工作区 `FAIL  D4 …`，属本分支引入）。
-# **为什么这不会打开「用消失来通过」的洞**：框架仓里删掉 `GEMINI.md` ⇒ `$script:IsFrameworkRepo` 为假、
-# 本格转 SKIP —— 但同一份文件缺失**必然令 `D2` FAIL**（`D2` 的谓词含 `$giExists`），哨兵仍在。
-# 判据（已实测，见 `docs/changes/001-onboarding-first-run.md` 第 6 单元）：删 `GEMINI.md` ⇒ `D4` SKIP **且** `D2` FAIL。
+# ⚠️ **门下沉到「每个入口」，不按「本仓是不是框架仓」整格跳过**（`2026-10-26`，qa-validator P1-b 修）：
+# 上一版把整格包在 `if (-not $IsFrameworkRepo) { SKIP } else { … }` 里，于是**采用方的 `@` 导入检查被静默取消**——
+# 实测同一输入（采用方 + `CLAUDE.md` 含 `@ONBOARDING.md`）：改后 **D4 SKIP（放行）**，改前 **D4 FAIL**。
+# **那是把一条原本生效的检查关掉了**，比假红更糟（D3：漏报比误报更难发现）。
+# 现在的语义是逐入口的、不依赖身份推断：
+#   **入口存在** ⇒ 照旧检查「不得 `@` 导入」（**无条件**，与下面那条无关）；
+#    `ONBOARDING` **本仓跟踪着**（框架仓）⇒ **还要求**该入口含指针、且指针能解析到真实文件；
+#    `ONBOARDING` **未被跟踪**（采用方没装引导）⇒ **只查 `@` 导入**，不要求指针——要求一个
+#     "没装的东西"被指向，正是上一版那种假红换个位置复发（Antigravity 采用方装了 `GEMINI.md` 就会踩到）。
+#   **入口不存在** ⇒ 只是"这个入口没装"，无判据可言（采用方按 `adopting.md` §二最小初始化即此形态）。
+# ⚠️ **两个入场文件都不存在 ⇒ 整格 SKIP（计 1 格）**；只要装了任意一个，本格就照常判分。
+# **「用消失来通过」仍被挡住**：框架仓里删掉 `CLAUDE.md` ⇒ 该入口不存在，但 `GEMINI.md` 仍在 ⇒ 本格继续判分，
+# 且 `ONBOARDING` 仍被跟踪 ⇒ 要求照旧；两个入口都删 ⇒ 本格 SKIP，而 `D1`（两入口章节数）与 `D2`（`GEMINI.md` 须存在）会 FAIL。
 $entryFiles = @('CLAUDE.md', 'GEMINI.md')
 $entryBad = @()
-if (-not $script:IsFrameworkRepo) {
-    # 计 **1 格**（`D4` 自己）。触发条件：`GEMINI.md` 不存在（= 非双运行时框架仓）。
-    # 只判 `GEMINI.md` 是刻意的：`CLAUDE.md` 与 `GEMINI.md` 在 `adopting.md` 的最小初始化里都不装，
-    # 而"框架仓"的机械标志只有 `GEMINI.md` 一个（`D2` 已用它作前提）。
+$entryPresent = @($entryFiles | Where-Object { Test-AFile (Join-Path $RepoRoot $_) })
+if ($entryPresent.Count -eq 0) {
+    # 计 **1 格**（`D4` 自己）。两个入口都没装 ⇒ 无判据可言。
     $script:Skip += 1
-    "  SKIP  D4：GEMINI.md 不存在（采用方工作区，未装两个入口）（计 1 格）"
+    "  SKIP  D4：两个入口（$($entryFiles -join ' / ')）均未安装（计 1 格）"
 } else {
-    foreach ($ef in $entryFiles) {
+    # 在循环外算一次（循环内的同名赋值会让格名只反映**最后一次**迭代，读者会误读）。
+    $needPointer = $onboardingTracked
+    foreach ($ef in $entryPresent) {
         $ep = Join-Path $RepoRoot $ef
-        if (-not (Test-Path -LiteralPath $ep)) { $entryBad += "$ef 不存在"; continue }
         $etxt = [System.IO.File]::ReadAllText($ep)
-        if ($etxt -notmatch 'ONBOARDING\.md') { $entryBad += "$ef 未指向 ONBOARDING.md" }
+        # 「要求指针」只在**本仓跟踪着 ONBOARDING** 时成立（见上方门说明）。采用方没装引导时，
+        # 一个入口不指向它是对的（无处可指），此时只有 ② 的 `@` 导入检查仍然有效。
+        if ($needPointer -and $etxt -notmatch 'ONBOARDING\.md') { $entryBad += "$ef 未指向 ONBOARDING.md" }
 
         # --- ② 左边界：`@` 只能是【行首或空白之后】的 `@`（`2026-10-25`，issue #55）
         # 真导入只有 `@path` / `@[label](path)` 两种形态，`@` 前面**不会紧贴**别的字符。
         # **原判据 `@[^\n]*ONBOARDING` 没有左边界** ⇒ 入口里出现 `a@b.com`、且**同一行**提到
         # `ONBOARDING.md` 就误报 FAIL（qa-validator 已复现；本轮实测注入确认）。
         # **误报比漏报更糟**：它会教人忽略这条判据（D3）。行内邮箱的 `@` 前面是 `a`（非空白）⇒ 不再命中。
+        # ⚠️ **残余（如实，qa-validator P2-e 实测）**：① `U+200B`（零宽空格）在 `@` 前 ⇒ **漏报**（`.NET \s` 不含它）；
+        #    ② 行内叙述句「禁止 `@ONBOARDING.md`」⇒ **误报**（`@` 前是空白）。
+        #    两者方向相反，改任一边都会加剧另一边。**未修**，按 §6 登记（不属本轮范围，且需要先定"行内算不算导入"）。
         foreach ($m in [regex]::Matches($etxt, '(?m)(^|\s)@[^\n]*ONBOARDING')) { $entryBad += "$ef 出现 @ 导入：$($m.Value.Trim())" }
 
         # --- ③ 指针必须指向【真实存在】的文件（`2026-10-25`，issue #55）
@@ -1072,14 +1118,16 @@ if (-not $script:IsFrameworkRepo) {
             [regex]::Matches($etxt, '(?<![\w./-])((?:\.{0,2}/)?(?:[\w.-]+/)*ONBOARDING(?:\.en)?\.md)(?![\w.-])') |
                 ForEach-Object { $_.Groups[1].Value }
         )
-        $ptrOk = 0
-        foreach ($pr in $ptrRefs) { if (Test-Path -LiteralPath (Join-Path $RepoRoot $pr)) { $ptrOk++ } }
-        if ($ptrRefs.Count -gt 0 -and $ptrOk -eq 0) {
-            $entryBad += "$ef 的 ONBOARDING 指针解析不到真实文件（$($ptrRefs -join ', ')）"
+        if ($needPointer) {
+            $ptrOk = 0
+            foreach ($pr in $ptrRefs) { if (Test-AFile (Join-Path $RepoRoot $pr)) { $ptrOk++ } }
+            if ($ptrRefs.Count -gt 0 -and $ptrOk -eq 0) {
+                $entryBad += "$ef 的 ONBOARDING 指针解析不到真实文件（$($ptrRefs -join ', ')）"
+            }
         }
     }
-    Assert-Cell -Name "D4 两入口含 ONBOARDING.md 指针且不 @ 导入（$($entryFiles.Count) 个入口）" `
-        -Expect '问题 = 0（两文件均存在 · 均含指针 · 指针至少一个可解析 · 均无 @ 导入）' `
+    Assert-Cell -Name "D4 入口含 ONBOARDING.md 指针且不 @ 导入（已装 $($entryPresent.Count) 个：$($entryPresent -join ' / ')；要求指针=$needPointer）" `
+        -Expect '问题 = 0（每个已装入口均不得 @ 导入；本仓跟踪 ONBOARDING 时还须含可解析指针）' `
         -Actual ([pscustomobject]@{ Exit = $entryBad.Count; Stdout = ($entryBad -join '; ') }) `
         -Predicate { $entryBad.Count -eq 0 }
 }
@@ -1110,12 +1158,24 @@ if (-not $pagePath -or -not (Test-Path -LiteralPath $pagePath)) {
 
     # --- E1 · 页面覆盖全部 GAP-/DEFER- 编号
     # 防的是：台账新增了编号，页面没跟上 —— 读者在页面上看不到它，以为没有。
-    $ledgerTxt = [System.IO.File]::ReadAllText((Join-Path $RepoRoot 'docs/ledger.md'))
+    # ⚠️ **台账缺失时必须变成「这一格 SKIP」，不能 `ReadAllText` 直接抛**（`2026-10-26`，qa-validator P0-1）：
+    # `docs/adopting.md` §二第 2 步**要求采用方建进度页**，而第 1 步的复制清单**不含 `docs/`** ⇒
+    # 「有页面、无台账」是**文档支持的合法状态**。原实现只 `Test-Path` 页面就往下读台账，
+    # 实测硬崩（`DirectoryNotFoundException`）、36 格后中止、**连小结都不打** ⇒ 采用方拿到的是一段堆栈。
+    $ledgerPath = Join-Path $RepoRoot 'docs/ledger.md'
+    if (-not (Test-AFile $ledgerPath)) {
+        # 计 **1 格**（`E1` 自己）。台账本身缺失时无从比对"页面是否覆盖台账编号"。
+        $script:Skip += 1
+        "  SKIP  E1：docs/ledger.md 不存在（该工作区尚未建台账），无判据可言（计 1 格）"
+        $allIds = @()
+    } else {
+    $ledgerTxt = [System.IO.File]::ReadAllText($ledgerPath)
     $allIds = @()
     foreach ($m in [regex]::Matches($ledgerTxt, '^\|\s*\*\*`?(GAP|DEFER)-(\d{3})`?\*\*', 'Multiline')) {
         $allIds += "$($m.Groups[1].Value)-$($m.Groups[2].Value)"
     }
     $allIds = @($allIds | Sort-Object -Unique)
+    }
     $pageIds = @()
     foreach ($m in [regex]::Matches($pageTxt, '\b(GAP|DEFER)-\d{3}\b')) { $pageIds += $m.Value }
     $missing = @($allIds | Where-Object { $_ -notin $pageIds })
@@ -1126,9 +1186,12 @@ if (-not $pagePath -or -not (Test-Path -LiteralPath $pagePath)) {
     # ⚠️ **更关键的是同源不同判**：`C5` 与 `E1` 读**同一份文件、同一个正则、同一个数**（`$defined` / `$allIds`）。
     # 我上一轮只给 `E1` 加了非空前提 ⇒ **一次跑、一个零、两个判决**——这本身自相矛盾。
     # 现在两格**一致地都不加**：零条定义是**合法状态**（新采用方的台账可以一条编号都没有）。
-    Assert-Cell -Name "E1 页面覆盖全部编号（台账 $($allIds.Count) 条）" -Expect '未覆盖 = 0' `
-        -Actual ([pscustomobject]@{ Exit = $missing.Count; Stdout = ($missing -join ',') }) `
-        -Predicate { $missing.Count -eq 0 }
+    # ⚠️ 台账缺失时上面已计 1 格 SKIP，此处**不再判分**（`E1` 自己那一格已经以 SKIP 形态存在）。
+    if ($null -ne $allIds -and (Test-AFile $ledgerPath)) {
+        Assert-Cell -Name "E1 页面覆盖全部编号（台账 $($allIds.Count) 条）" -Expect '未覆盖 = 0' `
+            -Actual ([pscustomobject]@{ Exit = $missing.Count; Stdout = ($missing -join ',') }) `
+            -Predicate { $missing.Count -eq 0 }
+    }
 
     # --- E3 · 状态条数字 = 实测
     # 为什么要有它（2026-10-15 补）：E1 查【编号覆盖】、E2 查【待办条数】，都【抓不到状态条过期】——
@@ -1190,7 +1253,7 @@ if (-not $pagePath -or -not (Test-Path -LiteralPath $pagePath)) {
     # 页面那三项目前由 E3 钉住，而 memory.md 的同类数字【此前无任何东西在查】。
     # memory.md 不存在时跳过（首次使用尚未初始化，AGENTS.md §5 同口径）。
     $memPath = Join-Path $RepoRoot 'memory.md'
-    if (-not (Test-Path -LiteralPath $memPath)) {
+    if (-not (Test-AFile $memPath)) {
         # 计 **1 格**（`E4` 自己）。**与上面的「E 组 SKIP」不会重复计数**：
         # 本行在页面存在时的 `else` 分支内，而「E 组 SKIP」只在页面不存在时走到 —— 二者互斥。
         $script:Skip += 1
@@ -1260,7 +1323,7 @@ if (-not $pagePath -or -not (Test-Path -LiteralPath $pagePath)) {
 #   **行缺失 ⇒ FAIL**（不是 SKIP）：缺行 = 投影缺失，不是合法状态 ——
 #   与 `AGENTS.md` §4.0「① 必须留一行」同源：**没有那一行，"做过判断"与"没做过"不可区分**。
 $memBizPath = Join-Path $RepoRoot 'memory.md'
-if (-not (Test-Path -LiteralPath $memBizPath)) {
+if (-not (Test-AFile $memBizPath)) {
     # 计 **1 格**（`E5` 自己）。它**不在**「E 组 SKIP」的 4 格里 —— `E5` 刻意放在页面条件块之外。
     $script:Skip += 1
     "  SKIP  E5：memory.md 不存在（尚未初始化）（计 1 格）"
@@ -1272,8 +1335,16 @@ if (-not (Test-Path -LiteralPath $memBizPath)) {
     $subRepoNames = @($subRepoNames | Sort-Object)
     $actualBiz = if ($subRepoNames.Count -eq 0) { '未接入' } else { $subRepoNames -join ', ' }
 
-    $memBiz = [regex]::Match([System.IO.File]::ReadAllText($memBizPath), '(?m)^业务仓：(.*)$')
-    if (-not $memBiz.Success) {
+    # ⚠️ **重复行必须报警**（`2026-10-26`，qa-validator P2-f）：`Match` 只取第一条 ⇒
+    #    `业务仓：未接入` + `业务仓：错的仓` 实测 **PASS**（第二条错值不可见）。
+    #    两次投影本身就是"D4 禁止的同一事实两份副本"，故命中 >1 处即 FAIL，并打印全部值。
+    $memBizAll = @([regex]::Matches([System.IO.File]::ReadAllText($memBizPath), '(?m)^业务仓：(.*)$'))
+    $memBiz = if ($memBizAll.Count -gt 0) { $memBizAll[0] } else { $null }
+    if ($memBizAll.Count -gt 1) {
+        $dups = @($memBizAll | ForEach-Object { $_.Groups[1].Value.Trim() }) -join ' | '
+        $script:Fail++
+        "  FAIL  E5 memory.md 出现 $($memBizAll.Count) 条「业务仓：」行（D4：同一事实两份副本）—— 值：$dups"
+    } elseif ($null -eq $memBiz) {
         # 缺行 = 投影缺失。**显式 FAIL 并打印实测值** —— 否则读者只知道"红了"，不知道该填什么。
         $script:Fail++
         "  FAIL  E5 memory.md 缺「业务仓：」行（实测应为：$actualBiz）"
@@ -1384,7 +1455,7 @@ $V_PS1 = @(Get-RepoFiles '*.ps1')
 $V_Ps1Count = $V_PS1.Count
 foreach ($V_F in $V_PS1) {
     $V_P = Join-Path $RepoRoot $V_F
-    if (-not (Test-Path -LiteralPath $V_P)) { continue }
+    if (-not (Test-AFile $V_P)) { continue }
     $V_T = [System.IO.File]::ReadAllText($V_P)
     # 只扫【非注释行】—— 注释里引用 `$h`/`$H` 作举例，不是变量使用（本格第一版即栽在此）。
     # 且排除【作用域前缀】（`$script:` / `$env:` …）—— 那是 `$<scope>:`，不是名为 scope 的变量。
@@ -1424,7 +1495,7 @@ foreach ($f in @(Get-RepoFiles '*.md')) {
     # 一个判据若把合法输入也报出来，就是在教人忽略它（D3）。
     if ($f -like '*roadmap-production*') { continue }
     $fp = Join-Path $RepoRoot $f
-    if (-not (Test-Path -LiteralPath $fp)) { continue }
+    if (-not (Test-AFile $fp)) { continue }
     $txt = [System.IO.File]::ReadAllText($fp)
     foreach ($p in $totalPatterns) {
         foreach ($m in [regex]::Matches($txt, $p)) { $foundTotals[[int]$m.Groups[1].Value] = $true }
