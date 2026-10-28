@@ -526,8 +526,11 @@ func TestRunSandboxBranches(t *testing.T) {
 		}
 	})
 
-	t.Run("A4 <b class> still blocks (GAP-025 fixed cell)", func(t *testing.T) {
-		sb.writePage(t, `<div>head <b class="v">0000000</b></div>`)
+	t.Run("A4 <div class> + <b class> still blocks (GAP-025 fixed cell, both halves)", func(t *testing.T) {
+		// Attributes on BOTH elements: the regex tolerates them in two separate
+		// places, and a page exercising only one leaves the other untested
+		// (qa-validator P1-6).
+		sb.writePage(t, `<div class="bar">head <b class="v">0000000</b></div>`)
 		code, out, _ := runReal(t, sb.dir)
 		if code != 0 || !strings.Contains(out, `"decision":"block"`) {
 			t.Errorf("exit=%d stdout=%q; want block", code, out)

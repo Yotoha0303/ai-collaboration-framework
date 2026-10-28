@@ -114,14 +114,47 @@ func Scenarios() []Scenario {
 			Expect: Expect{Code: 0, StdoutEmpty: true, StderrEmpty: true},
 		},
 		{
-			Name: "A4 <b> 加 class 属性 → 仍 block（GAP-025 已修此格）",
+			// The page carries attributes on BOTH elements on purpose. The regex
+			// has two attribute-tolerant halves (`<div[^>]*>` and `<b[^>]*>`), and
+			// a page that only exercises one of them makes the other half's
+			// mutation invisible: qa-validator P1-6 measured exactly that — with a
+			// bare `<div>`, changing the div half to `<div>` went GREEN on a
+			// no-oracle run, because Expect only looked for `"decision":"block"`
+			// and the <b> half kept matching.
+			Name: "A4 <b> 与 <div> 都加属性 → 仍 block（GAP-025 已修此格）",
 			Make: func(dir string) ([]string, error) {
 				if err := initRepoOnMain(dir); err != nil {
 					return nil, err
 				}
-				return nil, writePage(dir, `<html><body><div>head <b class="v">0000000</b></div></body></html>`+"\n")
+				return nil, writePage(dir, `<html><body><div class="bar">head <b class="v">0000000</b></div></body></html>`+"\n")
 			},
-			Expect: Expect{Code: 0, StdoutContains: []string{`"decision":"block"`}, StderrEmpty: true},
+			// Asserting the REASON, not just the decision, is what gives the
+			// no-oracle run teeth: a mutation that breaks matching produces the
+			// silent branch (empty stdout), and any mutation that mangles the
+			// reason still fails the second element.
+			Expect: Expect{
+				Code:           0,
+				StdoutContains: []string{`"decision":"block"`, "记录的 HEAD 是 0000000"},
+				StderrEmpty:    true,
+			},
+		},
+		{
+			// A4b pins the OTHER half of the same tolerance: a `<div id=…>` (not
+			// class) together with a `<b style=…>` (not class). Different attribute
+			// NAMES, so a mutation that special-cases `class="..."` cannot satisfy
+			// both A4 and A4b.
+			Name: "A4b <div id> + <b style> → 仍 block（属性容忍的另一半）",
+			Make: func(dir string) ([]string, error) {
+				if err := initRepoOnMain(dir); err != nil {
+					return nil, err
+				}
+				return nil, writePage(dir, `<html><body><div id="status">head <b style="color:red">0000000</b></div></body></html>`+"\n")
+			},
+			Expect: Expect{
+				Code:           0,
+				StdoutContains: []string{`"decision":"block"`, "记录的 HEAD 是 0000000"},
+				StderrEmpty:    true,
+			},
 		},
 		{
 			Name: "A5 重构成 <span> → 仍静默（GAP-025 残余，故意断言）",
