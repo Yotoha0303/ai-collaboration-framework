@@ -641,20 +641,39 @@ work"?** Only the former is tracked.
 
 ---
 
-### Delivery path: small commits + always via PR, pushed to the upstream author
+### Delivery path: split by certainty (certain → push `main` · uncertain → open a PR)
 
-**Human decision**: changes are **not stacked up locally**; every change is **opened as a PR
-against the upstream author**.
+**Human decision (revised `2026-10-28`)**: changes are routed by **certainty**, no longer "always via PR":
+
+| Change kind | Destination |
+| --- | --- |
+| **Ideas / opinions / nothing to change** | **issue** |
+| **Certain** (the orchestrator can decide itself: reversible · in-repo · no exemption; criterion = §4.0 decision routing ①) | **commit and push straight to `main`**, no PR |
+| **Uncertain** (needs the user's ruling, and **development is complete**) | **open a PR**, wait for the user to read and merge |
 
 > 🔒 **Hard specification for commits to the framework repo (`ai-collaboration-framework`) (Pre-commit Static Memory File)**:
 > Whenever committing code or doc changes to the AI collaboration framework repo itself, **one must read the static memory file [`docs/commit-guidelines.md`](docs/commit-guidelines.md) (Pre-commit Guidelines) before triggering any commit action!**
 > Under normal operation this file is **not read** (loaded on-demand, zero daily context overhead).
 > **Core Red Lines**:
-> 1. **To commit code, open a PR first**: Direct commits or pushes to the framework's `main` branch are strictly prohibited! All framework modifications must be reviewed and merged via Pull Requests from independent branches;
-> 2. **For clear issues such as defects or bugs, file an issue first**: Any identified defect, gap, or bug must first be filed as a GitHub Issue, and the PR must reference the issue;
-> 3. **Meta-architecture and rule changes require user discussion first**: Without explicit discussion and authorization from the user, modifying and committing framework rules is strictly prohibited.
+> 1. **Route by certainty**: certain changes go straight to `main`; **uncertain but complete** changes become a PR for the user to merge.
+>    **A PR is "complete, awaiting a ruling", not a review gate.** The **default commit target is this repo** — when the workspace
+>    holds several repos or the target is uncertain, **ask the user first**.
+>    **Branches may exist but must not linger**: a branch with commits not merged into `main` must have either an **open PR** or an
+>    **explicit lingering justification in `record.md`**; otherwise it violates this rule.
+> 2. **For clear issues such as defects or bugs, file an issue first**: any identified defect, gap, or bug must first be filed as a
+>    GitHub Issue; **changes that go through a PR** must reference it;
+> 3. **Meta-architecture and rule changes require user discussion first**: without explicit discussion and authorization from the user,
+>    modifying and committing framework rules is strictly prohibited.
+>    **The "certainty" in rule 1 grants no exemption from rule 3** — what the orchestrator may decide alone is the **implementation**,
+>    not **whether the rule changes** (§4.0 hard boundary 1).
 >
 > 📄 **The full commit specifications have been extracted and consolidated into [`docs/commit-guidelines.md`](docs/commit-guidelines.md) (on-demand static memory file)**.
+
+> ⚠️ **The old wording has been superseded (`2026-10-28`)**: this section used to say "**always via PR, pushed to the upstream author**"
+> plus "direct commits to `main` are strictly prohibited". The user ruled in favour of **routing by certainty**. Rationale: the old rule
+> required **every** change to go through a PR, which under a single-person, high-intensity workflow degraded certain changes into
+> "open PR → self-review → self-merge" — **the PR became a formality carrying no information**. The new rule makes a PR appear only
+> when **a human ruling is genuinely needed**. **Historical snapshots are not rewritten** (§5): this paragraph stays as the trace of the change.
 
 > ⚠️ **"Push to the upstream author" holds only for an *adopter*** (`GAP-018`): **the framework repo
 > itself is not a template repo being adopted** — it has no "upstream author" to push to;
@@ -667,15 +686,19 @@ against the upstream author**.
 
 | Item | Value |
 | --- | --- |
-| `origin` | your fork (push branches here) |
-| `upstream` | **the author's repo, the PR target** |
-| PR base | `upstream/main` |
+| `origin` | **the target repo** (under the self-hosted layout, `origin` is the delivery target) |
+| PR base | `origin/main` |
+| Commit target | **defaults to this repo**; several repos or an uncertain target => **ask the user first** |
 
 **Flow**:
 
 ```
-git -C "$REPO" push origin <branch>                        # push to the fork
-gh pr create --repo <author-repo> --base main --head <you>:<branch>   # open the PR upstream
+# Certain change (default path)
+git -C "$REPO" add <files> && git -C "$REPO" commit && git -C "$REPO" push origin main
+
+# Uncertain and complete (open a PR and wait for the ruling)
+git -C "$REPO" push origin <branch>
+gh pr create --base main --head <branch>          # defaults to this repo; ask the user before crossing repos
 ```
 
 > **`$REPO` is resolved in §0.0** (`git rev-parse --show-toplevel`): `git -C "$REPO" …` operates
@@ -691,10 +714,10 @@ gh pr create --repo <author-repo> --base main --head <you>:<branch>   # open the
    `git -C "$REPO" ls-files` is exactly the set you intend to publish, and
    `status --porcelain` shows no unexpected changes (hard-coding `project` makes the command
    unrunnable, `exit 128` — that is "the command did not run," not "the fence works").
-3. **Conflict pre-check against `upstream/main`** — `git log --name-only upstream/main ^HEAD`
-   for upstream additions, intersect with local changes, then `git merge-tree` dry-run.
-4. **Baseline comparison** — per convention, the PR body gives a before/after table (test
-   counts, coverage, floors).
+3. **Conflict pre-check against `origin/main`** — `git log --name-only origin/main ^HEAD`
+   for mainline additions, intersect with local changes, then `git merge-tree` dry-run.
+4. **Baseline comparison** — when opening a PR, the body gives a before/after table (test
+   counts, coverage, floors); when pushing straight to `main`, write it into the commit message.
 
 > ⚠️ **Coverage readings must come from an LF working tree.** CRLF inflates by several points
 > and has been measured in a real project. At a critical floor, that difference is enough to be
