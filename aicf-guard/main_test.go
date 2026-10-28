@@ -68,14 +68,13 @@ func TestUnknownSubcommand(t *testing.T) {
 	}
 }
 
-// TestSubcommandPlaceholders verifies every reserved subcommand name is
-// recognised (dispatched) and exits 1 with a clear "not implemented" message.
-// A placeholder must NOT exit 0 (silent success) — that would be fail-OPEN.
-// The list mirrors ADR §2.1 (the six subcommand names) so a typo'd name in a
-// later unit is caught here as an unknown subcommand (exit 2) rather than
-// silently passing.
+// TestSubcommandPlaceholders verifies every RESERVED-BUT-UNPORTED subcommand
+// name is recognised (dispatched) and exits 1 with a clear "not implemented"
+// message. A placeholder must NOT exit 0 (silent success) — that would be
+// fail-OPEN. `progress` is deliberately absent: it is implemented (M0 2nd
+// dispatch) and is covered by TestProgressSubcommandBelow.
 func TestSubcommandPlaceholders(t *testing.T) {
-	subs := []string{"progress", "numbers", "inject", "adapter", "selftest", "doctor"}
+	subs := []string{"numbers", "inject", "adapter", "selftest", "doctor"}
 	for _, sub := range subs {
 		t.Run(sub, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
@@ -90,6 +89,34 @@ func TestSubcommandPlaceholders(t *testing.T) {
 				t.Errorf("stdout=%q want empty", stdout.String())
 			}
 		})
+	}
+}
+
+// TestProgressSubcommandBelow: the dispatch reaches the progress package. An
+// explicit --workspace pointing at a non-workspace resolves to nothing, which
+// the contract maps to a silent exit 0 — so this proves wiring without
+// depending on the developer's own workspace state.
+func TestProgressSubcommandBelow(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"progress", "--workspace", t.TempDir()}, &stdout, &stderr)
+	if code != 0 {
+		t.Errorf("exit=%d want 0 (unresolvable workspace is a deliberate silence); stderr=%q", code, stderr.String())
+	}
+	if stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Errorf("stdout=%q stderr=%q; want both empty", stdout.String(), stderr.String())
+	}
+}
+
+// TestProgressBadFlag: a malformed flag must be a usage error (2), never a
+// silent 0 — the guard's own flags must not be able to fail open.
+func TestProgressBadFlag(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"progress", "--no-such-flag"}, &stdout, &stderr)
+	if code != 2 {
+		t.Errorf("exit=%d want 2; stderr=%q", code, stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("stdout=%q want empty", stdout.String())
 	}
 }
 

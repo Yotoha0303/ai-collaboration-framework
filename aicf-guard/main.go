@@ -2,18 +2,19 @@
 // (check-progress, check-numbers, inject-agents-tail, stop-adapter, self-test)
 // per ADR-001 (docs/adr/ADR-001-aicf-guard.md).
 //
-// M0 foundation (this commit): module skeleton, subcommand dispatch skeleton,
-// and the --version subcommand. The actual subcommand implementations land in
-// subsequent units (progress = M0 2nd dispatch; numbers = M1; inject/adapter =
-// M2; selftest = M3; doctor = M4 per ADR §3 / §8.2 R7). The shared libraries
-// (internal/git, internal/workspace, internal/mainline, internal/sha,
-// internal/page) are delivered alongside this skeleton.
+// Shipped so far: the module skeleton, --version (M0 1st dispatch) and progress
+// (M0 2nd dispatch). The remaining subcommands land later (numbers = M1;
+// inject/adapter = M2; selftest = M3; doctor = M4 per ADR §3 / §8.2 R7). The
+// shared libraries (internal/git, internal/workspace, internal/mainline,
+// internal/sha, internal/page) back the shipped subcommands.
 package main
 
 import (
 	"fmt"
 	"io"
 	"os"
+
+	"aicf-guard/internal/progress"
 )
 
 // version and commit are build-time injected (ADR §2.1 R4) via:
@@ -49,11 +50,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case "-h", "--help":
 		printUsage(stdout)
 		return 0
-	case "progress", "numbers", "inject", "adapter", "selftest", "doctor":
-		// M0 foundation: dispatch skeleton only. The implementations land in
-		// later units (ADR §3). Placeholder exits 1 with a clear stderr line so
-		// it is never mistaken for a silent success (fail-closed).
-		fmt.Fprintf(stderr, "aicf-guard: %q not implemented in M0 foundation (placeholder; see ADR-001 §3)\n", args[0])
+	case "progress":
+		// ADR §1.2 / §6.1: the exit code contract is the published one. All the
+		// logic — including the deliberate silences — lives in the package so it
+		// can be exercised without a process boundary.
+		return progress.Run(args[1:], stdout, stderr, progress.DefaultDeps())
+	case "numbers", "inject", "adapter", "selftest", "doctor":
+		// Not yet ported. Placeholder exits 1 with a clear stderr line so it is
+		// never mistaken for a silent success (fail-closed).
+		fmt.Fprintf(stderr, "aicf-guard: %q not implemented yet (see ADR-001 §3 for the milestone)\n", args[0])
 		return 1
 	default:
 		fmt.Fprintf(stderr, "aicf-guard: unknown subcommand %q\n", args[0])
@@ -68,8 +73,8 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "usage: aicf-guard <subcommand> [flags]")
 	fmt.Fprintln(w, "       aicf-guard --version")
 	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "subcommands (ADR-001 §2.1; M0 foundation ships dispatch skeleton only):")
-	fmt.Fprintln(w, "  progress   check progress page against mainline (M0 2nd dispatch)")
+	fmt.Fprintln(w, "subcommands (ADR-001 §2.1):")
+	fmt.Fprintln(w, "  progress   check progress page against mainline")
 	fmt.Fprintln(w, "  numbers    check identifier numbers across branches (M1)")
 	fmt.Fprintln(w, "  inject     inject AGENTS.md tail for Antigravity (M2)")
 	fmt.Fprintln(w, "  adapter    adapt progress/numbers to Antigravity Stop protocol (M2)")

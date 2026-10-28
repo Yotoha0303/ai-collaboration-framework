@@ -436,3 +436,121 @@ IDENTICAL: <div[^>]*>\s*head\s*<b[^>]*>\s*([0-9a-fA-F]{7,40})\s*</b[^>]*>\s*</di
 **判据不变量对照（ADR §1.3）**：§1.3.6（HTML 正则同款 + 同款静默）✅ 逐字节一致（§7.4.4）+ `<span>` 残余格保留；
 GAP-002（指针异常不得静默）✅ 由 M2/M3 两格钉住。
 
+### 7.5 U5 · `progress` 子命令（M0 核心，11 个分支）
+
+**设计：依赖注入。**`Run(args, stdout, stderr, Deps)`，`Deps` 的每个协作者都是函数；生产接线只有
+`DefaultDeps()` 一处。理由**不是**"方便测试"，而是**两条 notice 分支用真 git 到不了**——真 git 要么可用、
+要么这台机器坏了。不注入则「git 不可用」「金丝雀不可信」两条**永不执行**，而永不执行的分支与
+写错了的分支**在观测上同形**（D3）。与此配套，`TestRunSandbox*` 用**真 git + 真共享库**跑同一套分支，
+补上"单测全绿但生产接线没接对"那一类缺口。
+
+| 文件 | 改动 |
+| --- | --- |
+| `internal/progress/progress.go` | 新增（约 240 行）：11 个分支 + `reasonTemplate`（逐字）+ `writeDecisionBlock`。 |
+| `internal/progress/progress_test.go` | 新增：32 格（含 4 个沙箱子测）。 |
+| `internal/mainline/mainline.go` | 新增 `ShortRef(repo, ref)`：`rev-parse --short`，**只用于措辞**，失败返回 `ok=false`（调用方回退 full id，`.ps1:349-350`）。 |
+| `main.go` / `main_test.go` | 接上 `progress`；占位子命令表去掉 `progress`（6 → 5），补 2 格接线用例。 |
+
+**分支落地对照**（§4.2.2 的 P1–P11，逐条有格）
+
+| 分支 | 用例 |
+| --- | --- |
+| P1 工作区不可解析 | `TestRunP1WorkspaceUnresolved` |
+| P2 指针异常（且**优先于**缺页） | `TestRunP2PointerFault` · `TestRunP2PointerFaultOutranksNoPage` · 沙箱 `P2_empty_pointer_is_a_notice` |
+| P3 无进度页（且**不碰 git**） | `TestRunP3NoPage`（断言 `Probe` 未被调用） · 沙箱 `P3 no page at all is silent` |
+| P4 git 不可用 | `TestRunP4GitUnusable` · 沙箱 `TestRunSandboxGitUnavailableNotice` |
+| P5 金丝雀不可信 | `TestRunP5CanaryUntrustworthy` · 沙箱 `TestRunSandboxCanaryNotice` |
+| P6 无仓库 | `TestRunP6NoRepo` · `TestRunP6NoRepoIgnoresMainline` · 沙箱 `TestRunSandboxNoRepoIsSilent` |
+| P7 主干三级全不中 | `TestRunP7MainlineUnresolved` · `TestRunP7MainlineUnresolvedIsHonoured` · 沙箱 `TestRunSandboxUnbornRepoIsSilent` |
+| P8 主干 full id 解析失败 | `TestRunP8MainlineFullIDFails` |
+| P9 页面无标记 | `TestRunP9NoHeadMarker` · 沙箱 `A5 <span> restructure is silent` |
+| P10 不一致 / 记录 SHA 解析不了 | `TestRunP10BlockOnMismatch` · `TestRunP10RecordedIDUnresolvable` · 沙箱 `A1` · `A4` |
+| P11 一致 | `TestRunP11InSync` · 沙箱 `A2 in-sync is silent` |
+
+**正向实测（进程内，`go test -race`）**
+
+```
+$ cd aicf-guard && gofmt -l . ; go vet ./...
+（无输出）
+$ go test -race -count=1 -v ./internal/progress/
+--- PASS: TestRunP1WorkspaceUnresolved … TestRunSandboxCanaryNotice    # 32 格
+ok  	aicf-guard/internal/progress	1.294s
+$ go test -race -count=1 ./...
+ok  	aicf-guard	1.023s
+ok  	aicf-guard/internal/git	1.098s
+ok  	aicf-guard/internal/mainline	1.152s
+ok  	aicf-guard/internal/page	1.024s
+ok  	aicf-guard/internal/progress	1.272s
+ok  	aicf-guard/internal/sha	1.364s
+ok  	aicf-guard/internal/workspace	1.065s
+```
+
+**正向实测（真二进制 × 本仓真工作区，`2026-10-28T08:5xZ`）**
+
+```
+$ go build -C aicf-guard -ldflags "-X main.version=v0.1.0 -X main.commit=$(git rev-parse --short HEAD)" -o /tmp/aicf-guard .
+$ /tmp/aicf-guard --version
+aicf-guard v0.1.0 (229c11d)          # exit 0
+$ /tmp/aicf-guard progress
+（无输出）                            # exit 0 —— 本仓页面与主干一致
+$ git symbolic-ref --quiet refs/remotes/origin/HEAD
+refs/remotes/origin/main             # exit 0 ⇒ 主干走【级 1】
+$ git rev-parse --short main
+8e744cd                              # 页面 <div>head <b>8e744cd</b> ⇒ 一致 ⇒ 静默
+```
+
+**负向实测（真二进制 × 沙箱，同一份真页面的副本改一个 SHA）**
+
+```
+$ /tmp/aicf-guard progress --workspace "$sb"     # 页面 head 改成 0000000
+exit=0
+stdout={"decision":"block","reason":"进度页落后于主干：project-progress.html 记录的 HEAD 是 0000000，而 main 是 46a3220。请先更新该页面再结束本轮——按 AGENTS.md 的交付约定，进度页要与代码同成熟度。需要同步的内容通常包括：状态条 head、用例数、覆盖率、GAP 台账状态与图例、以及新增的提交行。"}
+stderr=（空）
+$ … | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["decision"])'
+block                                # 单行压缩 JSON，可解析，字段名 decision/reason
+```
+
+同沙箱另三态（一次性跑完）：
+
+```
+$ 页面记录沙箱主干 c60de16 → 无输出                 exit=0
+$ 指针写成 "  \n"（存在但空白）→ stderr=进度页指针异常：…   exit=1
+$ 指针指向不存在的页名 gone.html → 无输出            exit=0
+```
+
+**负向（变异验证，12 条）**
+
+| 变异 | 改法 | 实测结果 |
+| --- | --- | --- |
+| M1 | 指针故障不再报（GAP-002 复发） | `TestRunP2PointerFault` · `…OutranksNoPage` · 沙箱 `P2` 三格 FAIL |
+| M2 | 指针故障让位于缺页（分支顺序反转） | `TestRunP2PointerFault` FAIL |
+| M3 | git 不可用走静默 | `TestRunP4GitUnusable` · 沙箱 `GitUnavailableNotice` FAIL |
+| M4 | 删掉金丝雀 | `TestRunP5CanaryUntrustworthy` · 沙箱 `CanaryNotice` FAIL |
+| M5 | 无仓库不静默 | 首轮**存活** ⇒ 用例改法后 `TestRunP6NoRepoIgnoresMainline` FAIL |
+| M6 | 主干全不中当作落后（GAP-012 噪声复发） | 首轮**存活** ⇒ 用例改法后 `TestRunP7MainlineUnresolvedIsHonoured` FAIL |
+| M7 | 记录 SHA 解析失败 ⇒ 静默（**V13 形态**） | `TestRunP10RecordedIDUnresolvable` · 沙箱 `A1`/`A4` FAIL |
+| M8 | reason 不点名主干（写死"当前 HEAD"，**GAP-031 措辞回归**） | 4 格 FAIL |
+| M9 | `ShortRef` 失败时不回退 full id | 首轮**存活** ⇒ 补 `TestRunShortRefFailureFallsBackToFullID` 后 FAIL |
+| M10 | `--workspace` 不传给 `Resolve` | 5 格 FAIL |
+| M11 | 多余参数静默吞掉 | `TestRunUnexpectedArgumentIsUsageError` FAIL |
+| M12 | JSON 用默认编码器（HTML 转义） | `TestBlockJSONShapeNoHTMLEscaping` FAIL |
+
+> **三条首轮存活的根因是同一个，值得记下**：M5/M6/M9 的用例**写了，但断言不可能失败**——
+> M5/M6 的 stub 让 `ResolveFull` 对**任何** id 都返回同一个 full id，于是"不一致"永远不成立，
+> 删掉静默分支后流程照样走到 `EqualFull(a,a)==true` → 静默 → **用例仍绿**；M9 的 `ShortRef` 在 stub 里
+> 恒返回可用值，回退路径**从未被走到**。**「有测试」与「测试能失败」是两件事**（D3）——
+> 这正是变异测试相对覆盖率的价值：三条都被覆盖率算作"已覆盖"。
+
+**测试自身的两处修正（如实记）**
+
+1. `TestRunSandboxGitUnavailableNotice` 首版把零字节 `git` 写成 **0644**，结果**输出 block**——
+   `exec.LookPath` 会**跳过不可执行文件**继续找下一个 `git`，于是跑的是真 git。改 **0755**（可解析、但启动即失败）
+   后落到 notice 分支。这条与 ADR §1.3.1 记录的「零字节 exe」形态一致，且是 Go 侧与 PowerShell 的
+   **一处语义差异**（`Get-Command` 不检查可执行位）：结论不变（fail-closed），但**原因不同**。
+2. `TestRunSandboxFeatureBranchComparesMainline` 首版断言 `"main"` 带引号（JSON 为中文未转义，`main` 是裸词），
+   改为锚定 `而 main 是` 后通过。
+
+**判据不变量对照（ADR §1.3）**：§1.3.1 THE ONE RULE ✅（本包**零** `git.Checked` 调用，只经共享库）；
+§1.3.2 探针+金丝雀 ✅（M3/M4）；§1.3.4 主干三级 + reason 点名 ✅（M6/M8）；§1.3.5 SHA 双侧归一 ✅（M7）；
+§1.3.6 正则同款静默 ✅（沙箱 A5）；GAP-002 指针异常 ✅（M1/M2）；GAP-012 unborn 静默 ✅（M6）。
+

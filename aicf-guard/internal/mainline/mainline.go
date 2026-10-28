@@ -74,3 +74,22 @@ func Resolve(repo string) Result {
 func stripRemotePrefix(ref string) string {
 	return strings.TrimPrefix(ref, "refs/remotes/")
 }
+
+// ShortRef returns the abbreviated form of `ref` (`git rev-parse --short`),
+// used ONLY to word the lagging-page message (check-progress.ps1:349-350).
+//
+// It lives here, next to Resolve, because it is the same concern: turning a ref
+// into the id a reader can match against the page. It is NOT a criterion — an
+// empty result just means the caller falls back to the full id — so failures
+// are reported as ok=false rather than as errors, and no branch of the guard
+// changes behaviour because of them.
+func ShortRef(repo, ref string) (string, bool) {
+	if repo == "" || ref == "" {
+		return "", false
+	}
+	r := git.Checked("-C", repo, "rev-parse", "--short", ref)
+	if r.Exit != 0 || r.Text == "" {
+		return "", false
+	}
+	return r.Text, true
+}
