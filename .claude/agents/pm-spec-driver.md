@@ -1,7 +1,7 @@
 ---
 name: pm-spec-driver
 description: 产品与需求定义师（注册表 #2）。当任务落在【立项 / 需求 / 架构前置】阶段，需要把业务构想转成无歧义 PRD、状态机与可测验收标准时使用。
-tools: Read, Write, Edit, Grep, Glob, PowerShell
+tools: Read, Write, Edit, Grep, Glob, Bash
 model: inherit
 color: cyan
 ---

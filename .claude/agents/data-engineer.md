@@ -1,7 +1,7 @@
 ---
 name: data-engineer
 description: 存储与数据流工程师（注册表 #4）。当任务需要存储选型、表结构与索引设计、缓存一致性方案或容量预估时使用（横向约束，不主责某一环）。
-tools: Read, Write, Edit, Grep, Glob, PowerShell
+tools: Read, Write, Edit, Grep, Glob, Bash
 model: inherit
 color: blue
 ---

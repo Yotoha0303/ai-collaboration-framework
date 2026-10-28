@@ -1,7 +1,7 @@
 ---
 name: backend-dev
 description: Go/后端工程专家（注册表 #5）。当任务落在【02 开发 / 本地验证 / 代码审查】阶段，需要生产级实现代码与本地验证命令时使用。
-tools: Read, Write, Edit, Grep, Glob, PowerShell
+tools: Read, Write, Edit, Grep, Glob, Bash
 model: inherit
 color: green
 ---

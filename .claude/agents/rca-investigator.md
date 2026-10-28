@@ -1,7 +1,7 @@
 ---
 name: rca-investigator
 description: 故障复盘与根因分析师（注册表 #10）。当任务落在【07 排障 / 09 复盘】阶段，需要时间线还原、5 Whys 根因定位与改进项闭环时使用。
-tools: Read, Write, Edit, Grep, Glob, PowerShell
+tools: Read, Write, Edit, Grep, Glob, Bash
 model: inherit
 color: yellow
 ---

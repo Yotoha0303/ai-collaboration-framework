@@ -1,7 +1,7 @@
 ---
 name: sre-operator
 description: SRE 可观测性与稳定性专家（注册表 #7）。当任务落在【04 构建 / 05 部署 / 06 观测 / 08 恢复 / 10 自动化】阶段，需要容器化、编排、SLI/SLO、告警规则与 Runbook 时使用。
-tools: Read, Write, Edit, Grep, Glob, PowerShell
+tools: Read, Write, Edit, Grep, Glob, Bash
 model: inherit
 color: red
 ---

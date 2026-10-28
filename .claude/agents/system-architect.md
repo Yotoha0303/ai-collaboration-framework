@@ -1,7 +1,7 @@
 ---
 name: system-architect
 description: 分布式系统架构师（注册表 #3）。当任务落在【架构 / 技术选型 / 设计评审】阶段，需要拓扑、领域边界、容灾降级方案与 ADR 时使用。
-tools: Read, Write, Edit, Grep, Glob, PowerShell
+tools: Read, Write, Edit, Grep, Glob, Bash
 model: inherit
 color: purple
 ---

@@ -1,7 +1,7 @@
 ---
 name: biz-strategist
 description: 商业闭环架构师（注册表 #1）。当任务落在【认知 / 立项 / 商业闭环】阶段，需要评估经济性、ROI、产品定位与核心商业指标时使用。
-tools: Read, Write, Edit, Grep, Glob, PowerShell
+tools: Read, Write, Edit, Grep, Glob, Bash
 model: inherit
 color: yellow
 ---

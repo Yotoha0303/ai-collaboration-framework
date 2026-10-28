@@ -1,7 +1,7 @@
 ---
 name: sec-auditor
 description: 安全合规与权限审计师（注册表 #8）。当任务落在【架构 / 部署 / 合规审查】需要网络边界、凭证管理、最小权限或 OWASP 扫描时使用（横向约束，不主责某一环）。
-tools: Read, Write, Edit, Grep, Glob, PowerShell
+tools: Read, Write, Edit, Grep, Glob, Bash
 model: inherit
 color: red
 ---
