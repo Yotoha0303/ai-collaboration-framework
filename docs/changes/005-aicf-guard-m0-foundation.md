@@ -847,3 +847,202 @@ EXIT=127
 - **未切 `.claude/settings.json`**（M4 范围）⇒ **Linux 上的守卫仍未恢复**（仍`powershell …` → 127）。用户痛点**未解除**。
 - **未实跑对拍**（`DEFER-019`）· **未实跑 selftest A 组**（本机无 PowerShell）。
 - **未改 `.agents/hooks/stop-adapter.ps1`**（`GAP-046` 的②，契约变更，需另立 PR）。
+
+---
+
+## 十、qa-validator 第 1 跳后的修复（`2026-10-28T09:56Z`，实现方回填）
+
+> 03 环第 1 跳（`qa-validator`）裁决「需修复后提交」。本节逐条写：**缺陷 → 修法 →
+> 正/负向实测命令与读数**。范围严格限制在下表 8 项，**未扩大**。
+>
+> 三条**人工已裁定、本次不动**的项：`DEFER-019`（对拍顺延）· `GAP-046`（notice 降级维持 ADR）·
+> `DEFER-020`（selftest「二进制缺失」格顺延 M3）。
+
+### 10.1 提交序列（一缺陷一提交）
+
+| # | 提交 | 对应 qa 项 | 单元 |
+| --- | --- | --- | --- |
+| 1 | `a6f5f86` | P1-1 | `progress` 参数错误 `exit 2` → `exit 1` + stderr |
+| 2 | `791aefb` | P2-1（总控裁定①） | 被拒绝的 `--workspace` → `exit 1` + stderr |
+| 3 | `00f057f` | P1-3 / `GAP-047` | 页名指针剥前导 UTF-8 BOM |
+| 4 | `240faaa` | P2-2 | 空白类注释收窄到实测（只改注释 + 测试） |
+| 5 | `4ee1cf0` | P1-5 | harness 违约不再中断；摘要分列 `COMPARED` / `SKIPPED` |
+| 6 | `96e52ce` | P1-6 | `A4` 双属性页面 + 新增 `A4b` |
+| 7 | `ddc53f9` | P2-6 | 沙箱钉死 `--object-format=sha1` 与签名关闭 |
+| 8 | `8952fd4` | P2-3（总控裁定） | 双标记页「结论依赖顺序」注释 + 双向测试，**不改行为** |
+
+### 10.2 逐条：缺陷 → 修法 → 正/负向读数
+
+#### F1 · `progress` 的退出码越出 `{0,1}`（qa P1-1，最重）
+
+- **缺陷**：`progress --bogus` / `progress --workspace`（缺值）/ `progress extra` 均 `exit 2`。
+  该子命令是 Stop hook，退出码由**宿主**读：Claude Code 的 Stop 事件不定义 2；
+  `stop-adapter.ps1:56-74` 对已知集之外的退出码落 `allow`（`self-test.ps1:1078` 已写明）。
+  ⇒ **参数写错 = 守卫静默放行**。
+- **修法**：旗标解析失败改走「守卫跑不起来」同一通道（`exit 1` + stderr），措辞标明是用法错误且守卫未运行。
+  `--version` / `-h` 顶层行为不动。
+- **正向**：
+  ```
+  $ for a in "--bogus" "--workspace" "extra"; do /tmp/aicf-f1 progress $a; echo "exit=$?"; done
+  flag provided but not defined: -bogus
+  … aicf-guard progress: usage error: flag provided but not defined: -bogus
+  (the guard did NOT run; run `aicf-guard progress --help` for usage)
+  exit=1        ← 修复前为 2
+  ```
+  `go test -race -count=1 ./internal/progress/ ./` → `ok` / `ok`
+- **负向（变异，均 FAIL）**：
+  | 变异 | 触发的格 |
+  | --- | --- |
+  | 旗标错误恢复 `return 2` | `TestRunUsageErrorsExitOne`（unknown flag / missing value）、`TestRunNeverReturnsTwo` |
+  | 多余位置参数恢复 `return 2` | 同上（3 处 FAIL） |
+- **覆盖**：`TestRunNeverReturnsTwo` 用**表驱动枚举 10 类调用**（help×2 / 未知旗标 / 缺值 / 多余位置 /
+  静默 / 指针 notice / git notice / 拒绝 `--workspace` / block），断言**任何路径都不返回 2**
+  且落在 `{0,1}`；这是「不许再有第三个 `return 2`」的可检查形态。
+- **边界（本 ADR 之外，必须写明）**：`main.go` **顶层** `run` 对「无参数」「未知子命令」仍返回 **2**。
+  这两条**不进 hook 链路**（hook 调的是 `progress`），故不受本契约约束；但读者不应据此以为「整个 CLI 只有 `{0,1}`」。
+  本节的契约是**子命令级**的。
+
+#### F2 · 页名指针带 UTF-8 BOM ⇒ 守卫静默退役（qa P1-3 / `GAP-047`）
+
+- **缺陷**：`printf '\xef\xbb\xbfproject-progress.html\n' > .claude/progress-page.txt` ⇒ `exit 0 / 空 / 空`，
+  而页面明明 stale。机理：`strings.TrimSpace` 不剥 U+FEFF ⇒ 页名带 BOM ⇒ `FindPage` 两处候选都不命中。
+  旧路无此缺陷（`Get-Content -Raw` 解码时剥 BOM）⇒ **这是与 legacy 的真实行为差异，修法是对齐旧路**。
+- **修法**：`trimPointerName` = 剥**一个前导** BOM 后再 `TrimSpace`；BOM-only 仍走「有指针读不出名字」的 fault。
+- **正向（真实二进制）**：
+  ```
+  BOM + 正常页名（页面 stale）  → exit 0 + {"decision":"block",…}
+  BOM-only                      → exit 1 + 「进度页指针异常：…读不出页名…」
+  无 BOM 对照（页面 stale）      → exit 0 + {"decision":"block",…}
+  go test -race -count=1 ./...  → 全 ok
+  ```
+- **负向（变异）**：`trimPointerName` 改回 `return strings.TrimSpace(s)` ⇒
+  `internal/page` 的 `TestReadPageNameStripsLeadingBOM` **6 个子格 FAIL**；
+  `internal/progress` 的 `TestRunSandboxBranches/P2b`（BOM ⇒ 仍 block）、`/P2c`（BOM-only ⇒ notice）**FAIL**。
+- **未验证**：`Get-Content` 在 `\v` / NBSP 上的具体行为**本机无 PowerShell，未实测**。
+  「BOM 只在 offset 0 被消费」是**读码推理**，已在测试注释里显式标注为推理而非读数。
+
+#### F3 · harness 提前 `return` + 摘要把 SKIP 与「从未比对」混为一个数（qa P1-5）
+
+- **缺陷**：某场景违反自身 `Expect` 时 `return rep` ⇒ 后续场景**一条都不比**；
+  末行用 `len(r.Comparisons)` ⇒ 「全 14 条跳过」与「全 14 条比过」打印同样大小。
+- **修法**：① 违约记为**该场景**的 `Comparison.ExpectErr` + `Kind=ERROR`，**继续跑完**；
+  仅「跑不起来」（缺二进制 / 读不了 `.ps1` / 沙箱建不起来 / 超时）仍 fatal；
+  ② 摘要分列 `COMPARED n/N` / `SKIPPED k/N`，违约另计 `EXPECT-VIOLATIONS v/N` 并逐条打 `EXPECT …` 行；
+  ③ **DIFF 不得把 ERROR 降级**。
+- **正向**：
+  ```
+  $ go run ./tools/parallel -guard /tmp/aicf-f3
+  … VERDICT SKIP — COMPARED 0/14, SKIPPED 14/14        ← 14 条全部被处理（修复前遇违约即止）
+  ```
+- **负向（变异，均 FAIL）**：违约处恢复 `return rep` ⇒ `TestRunContinuesAfterExpectationViolation`（`len=2 want 3`）
+  + 计数格；摘要恢复单一 `%d scenario(s)` ⇒ `TestSummaryReportsComparedAndSkippedSeparately` ×2；
+  去掉 `if rep.Kind != KindError` ⇒ 「diff never downgrades」格（`Kind=DIFF want ERROR`）。
+
+#### F4 · `A4` 在无 oracle 时无牙（qa P1-6）
+
+- **缺陷**：`A4` 页面用 `<b class="v">` 但 `<div>` 不带属性，而正则的属性容忍有**两半**。
+  把 div 那半改成 `<div>` 的变异在无 oracle 时**静默全绿**（实测：15 条全 SKIP、exit 2，与正确实现读数相同）。
+- **修法**：`A4` 改 `<div class="bar">head <b class="v">…`；新增 `A4b` 用**不同属性名**
+  （`<div id="status">` + `<b style=…>`），防「只特判 `class=`」的变异同时过关；两条都断言 reason
+  里的 `记录的 HEAD 是 0000000`；`progress` 包真实接线沙箱的 A4 格同步改双属性。
+- **正向（无 oracle）**：`VERDICT SKIP — COMPARED 0/15, SKIPPED 15/15`
+- **负向（无 oracle，注入变异）**：
+  ```
+  headRe 的 <div[^>]*> → <div>  → harness exit=1
+    EXPECT A4 … / EXPECT A4b …
+    VERDICT ERROR — COMPARED 0/15, SKIPPED 15/15, EXPECT-VIOLATIONS 2/15
+  headRe 的 <b[^>]*>   → <b>    → 同上，2/15
+  ```
+
+#### F5 · 空白类注释与实现不符（qa P2-2）——**结论方向与原描述相反，已按实测改写**
+
+- **实测（`2026-10-28`，直接跑 `unicode.IsSpace`）**：`U+000B` / `U+00A0` / `U+0085` 的 `IsSpace` **均为 true**
+  ⇒ `strings.TrimSpace` **会**剥掉它们 ⇒ **Go 侧不比 .NET 窄**。原注释「Trim matches PowerShell's String.Trim()」
+  不成立，但**方向与 qa 描述相反**（qa 称 Go 侧静默、.NET 侧会匹配；在 **Trim** 这一层不成立）。
+- **本族真实的可测差异在上一层**——**页正则的 `\s`**：Go 的 `regexp` `\s` 只认 ASCII `[ \t\n\f\r]`，
+  .NET 的 Unicode 感知。实测头正则前缀：
+  ```
+  "<div>\vhead"     → Go \s 不匹配（静默）
+  "<div>\u00a0head" → Go \s 不匹配（静默）
+  "<div>\u0085head" → Go \s 不匹配（静默）
+  对照 space / tab / newline → 两侧都匹配
+  ```
+  与 qa 的现象读数一致，只是**原因归错了层**。
+- **修法**：**只改注释 + 加测试，不改实现**（M0 目标是与旧路逐字节对齐；拓宽 `\s` 是行为变更，
+  需独立决策 + 独立对拍）。归 `GAP-025` 残余，**不新开编号**。
+- **正向**：`go test -race -count=1 ./internal/page/` → `ok`
+- **负向（变异）**：把 `headRe` 的 `\s` 换成 Unicode 空白类 ⇒
+  `TestReadHeadUnicodeWhitespaceIsASilentDivergence` 的 vtab / nbsp / nel 三格 **FAIL**（对照组三格仍 PASS）。
+- **旁注**：本轮同时把「BOM 只在 offset 0 被消费」「`Get-Content` 对 `\v`/NBSP 的处理」标为**推理/未实测**。
+
+#### F6 · fixture 只钉日期，不钉签名 / 对象格式（qa P2-6）
+
+- **缺陷**：只注入 `GIT_AUTHOR_DATE` / `GIT_COMMITTER_DATE`。宿主配置差异 ⇒ 同配方不同 id ⇒ 假 DIFF，
+  或场景直接跑不起来。
+- **实测（`2026-10-28`，git 2.56.0）**：
+  - `init --object-format=sha256` ⇒ `--short HEAD` 为 **8 位**、full id **64 位 hex**；
+    而页正则只收 `{7,40}`、Go 侧 `fullIDRe` 只收 40 位 ⇒ 两侧对「id 能否解析」不一致。
+    `--object-format=sha1` **压过** `GIT_DEFAULT_HASH=sha256`（exit 0，format `sha1`）。
+  - 宿主 global `commit.gpgsign=true` + 坏 signing program ⇒ `git commit` **exit 128**；
+    加 `-c commit.gpgsign=false -c gpg.format=openpgp` ⇒ **exit 0**。
+- **修法**：`prepareRepo` 显式 `git init -q --object-format=sha1`；**所有** fixture git 调用统一带
+  `-c commit.gpgsign=false -c gpg.format=openpgp`，并把两项写进沙箱自身 config。
+  **`core.abbrev` 刻意不钉**：两侧读同一份宿主配置、影响相同，钉它反而测了生产不用的配置。
+- **正向（真实二进制，宿主 hostile 配置 `GIT_CONFIG_GLOBAL=/tmp/hostile.gitconfig GIT_DEFAULT_HASH=sha256`）**：
+  ```
+  修前：VERDICT ERROR — COMPARED 0/1 … git commit … exit status 128: gpg 无法为数据签名
+  修后：VERDICT SKIP  — COMPARED 0/15, SKIPPED 15/15
+  ```
+- **负向（变异，FAIL）**：去掉 `--object-format=sha1` ⇒ `object format="sha256" want sha1` / `full id … len 64 want 40`；
+  去掉签名覆盖 ⇒ `fixture must survive a hostile host git config: … exit 128`。
+- 另加 `TestFixtureCommitsAreDeterministic`：同配方两次 ⇒ `HEAD` 必须完全相同（否则对拍无从比字节）。
+
+#### F7 · 被拒绝的 `--workspace` 静默退出 0（qa P2-1，**总控裁定①**）
+
+- **缺陷**：ADR §2.3 把 `--workspace` 定为**权威覆盖**，`resolveWorkspaceLayers` 也实现了「显式给了但不是工作区 ⇒ 失败、不回退」，
+  但 `decide` 随后把「Workspace 为空」一律当「未初始化」⇒ `exit 0` 静默 ⇒ 权威覆盖被拒绝却一字不报。
+- **修法**：仅当 `wsFlag != ""` 时把空解析判为 notice；**自动发现找不到工作区仍静默**（那才是「未初始化」）。
+- **正向**：`progress --workspace /tmp/aicf-wsneg` → `exit=1` +「--workspace 指定的目录不是工作区…」；
+  在非工作区 CWD 下 `progress`（无旗标）→ `exit=0 / 空 / 空`。
+- **负向（变异）**：分支改 `if false && wsFlag != ""` ⇒ `TestRunWorkspaceFlagRejectedIsNotice`（`exit=0 want 1`）
+  + `main` 包 `TestProgressSubcommandBelow`（`exit=0 want 1`）。
+
+#### F8 · 双标记页的结论依赖顺序（qa P2-3，**总控裁定：本次不改行为**）
+
+- **裁定理由**：`[regex]::Match` 同样取第一个匹配；改了就破坏 M0 的逐字节对齐目标，会把真对拍变成假 DIFF。
+- **本次只做**：`headRe` 注释写明「两个**格式正确**的标记时取第一个 ⇒ 结论是顺序的函数」，给出实测两个方向；
+  新增 `TestReadHeadTwoMarkersVerdictDependsOnOrder`，**两个方向都断言**（单方向断言会被读成「正确行为的描述」）。
+- **正向**：`go test -race -count=1 ./internal/page/` → `ok`
+- **负向（变异）**：`ReadHead` 改成取**最后一个**标记 ⇒ 该测试两个子格 **FAIL**。
+
+### 10.3 本轮全量读数（`2026-10-28T09:56Z`，HEAD `8952fd4`）
+
+```
+$ cd aicf-guard && gofmt -l .            → 无输出（clean）
+$ go vet ./...                           → exit 0
+$ go test -race -count=1 ./...
+ok   aicf-guard                    1.033s
+ok   aicf-guard/internal/git       1.112s
+ok   aicf-guard/internal/mainline  1.162s
+ok   aicf-guard/internal/page      1.033s
+ok   aicf-guard/internal/parallel  1.762s
+ok   aicf-guard/internal/progress  1.305s
+ok   aicf-guard/internal/sha       1.363s
+ok   aicf-guard/internal/workspace 1.064s
+?    aicf-guard/tools/parallel     [no test files]
+```
+`go test -count=1 -v ./...` 计数：**顶层 PASS 139 · 子测试 PASS 89 · FAIL 0**。
+
+### 10.4 本轮**仍然未验证**的项（如实，不得读成已通过）
+
+| 项 | 状态 | 原因 |
+| --- | --- | --- |
+| **对拍（Go vs `.ps1` 逐字节）** | ⛔ **未验证**（`DEFER-019`） | 本机无 `pwsh`/`powershell`。本轮**未**、也**不能**声称对拍通过；`A4/A4b` 的牙是**无 oracle 下对变异**的读数，不是对拍 |
+| **`selftest.ps1` A 组实跑** | ⛔ **未验证** | 尺子本身是 `.ps1`，本机跑不了 |
+| **薄转发层实机行为** | ⛔ **未验证**（沿用 §7.7 / §9.2） | 需装有 PowerShell 的机器 |
+| **`Get-Content` 对 BOM / `\v` / NBSP 的真实处理** | 🟡 **推理，未实测** | 同上；已把该推理在代码注释与测试注释里显式标注 |
+| **`GAP-046` / `DEFER-020`** | 按人工裁定**不动** | 见 §九 |
+| **顶层 CLI 仍返回 2** | 刻意保留 | 不进 hook 链路；边界已在 §10.2 F1 写明 |
+
+> **范围声明**：本轮只改 `aicf-guard/` 内 6 个文件 + 本节。未改 `memory.md` / `progress.html` /
+> `record.md` / `docs/ledger.md` / ADR，未 push、未建 PR。
