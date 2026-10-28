@@ -243,3 +243,51 @@ $ go test -count=1 -v ./internal/sha/ | grep -c '^--- PASS'
 
 **判据不变量对照（ADR §1.3）**：§1.3.5（SHA 双侧归一 full id 再比）✅ 由 `ResolveFull` 强制；§1.3.1（THE ONE RULE）✅ 本包不直接读 git 退出码，只经 `git.Checked`。
 
+### 7.2 U2 · `internal/mainline`（逐行核对后**实现未改**，补一条负向用例）
+
+**核对结论（逐行对照 `.ps1:314-348`）**
+
+| `.ps1` 行 | 行为 | Go 实现 | 结论 |
+| --- | --- | --- | --- |
+| 316-323 | 级 1：`symbolic-ref --quiet refs/remotes/origin/HEAD` **exit 0 且 Text 非空** → `rev-parse --verify --quiet "$candRef^{commit}"` **exit 0** ⇒ 命中；`Name = candRef -replace '^refs/remotes/',''` | `Resolve` 级 1 同形；`stripRemotePrefix` = `strings.TrimPrefix`（PS 的 `-replace '^…'` 锚定在开头，与 TrimPrefix 等价） | ✅ 一致 |
+| 324-329 | 级 2：`refs/heads/main^{commit}` exit 0 ⇒ `Name='main'` | 同形 | ✅ |
+| 330-335 | 级 3：`HEAD^{commit}` exit 0 ⇒ `Name='HEAD（未找到主干）'`（**必须点名兜底**） | 同形，字符串逐字一致 | ✅ |
+| 340 | 三级全不中 ⇒ `exit 0`（静默） | 返回 `Result{Ok:false}`，**由调用方**决定静默 | ✅（决策点留在调用方，符合 `.ps1` 的分支结构） |
+| — | （`.ps1` 无此分支） | `repo == ""` ⇒ 直接 `Ok:false` | 防御性新增，**不改变可观测行为**（`workspace.Resolve` 不会返回空 repo） |
+
+**改了什么**：`mainline.go` **无改动**（核对后确认与 `.ps1` 一致，不做"为改而改"）；`mainline_test.go` 补
+`TestResolveOriginHeadNonCommitFallsToMain`。**为什么补**：原有 3 条级 1 用例里，「dangling ref」在**查 ref 那一步**
+就失败了，**从未走到 `^{commit}` peel**——于是"级 1 去掉 `^{commit}`"这个变异（M2）原本**无格可杀**。这是
+ADR §1.3.4「`symbolic-ref` 不够，须再过一次 `rev-parse --verify`」在**对象类型**维度上的补格。
+
+**正向实测**
+
+```
+$ cd aicf-guard && gofmt -l internal/mainline/ ; go vet ./internal/mainline/
+（无输出）
+$ go test -race -count=1 -v ./internal/mainline/
+--- PASS: TestResolveOriginHead
+--- PASS: TestResolveMain
+--- PASS: TestResolveHEADFallback
+--- PASS: TestResolveUnborn
+--- PASS: TestResolveOriginHeadNonCommitFallsToMain      # 本次新增
+--- PASS: TestResolveEmptyRepo
+--- PASS: TestResolveOriginHeadUnbornFallsToMain
+ok  	aicf-guard/internal/mainline	1.159s
+```
+
+**负向（变异验证）**
+
+| 变异 | 改法 | 实测结果 |
+| --- | --- | --- |
+| M1 | 级 1 不再过 `rev-parse --verify`（`if true`） | `--- FAIL: TestResolveOriginHeadNonCommitFallsToMain` · `TestResolveOriginHeadUnbornFallsToMain` |
+| M2 | 级 1 的 verify 去掉 `^{commit}` | `--- FAIL: TestResolveOriginHeadNonCommitFallsToMain`（**本条正是为它而加**） |
+| M3 | 跳过级 2 | `--- FAIL: TestResolveMain` · `…NonCommitFallsToMain` · `…UnbornFallsToMain` |
+| M4 | 级 3 的 `Name` 不点名（`"HEAD"`） | `--- FAIL: TestResolveHEADFallback` |
+| M5 | `stripRemotePrefix` 不剥前缀 | `--- FAIL: TestResolveOriginHead` |
+| M6 | 把级 3 提到级 1 之前（**退化回 HEAD**，即 GAP-031 复发） | `--- FAIL: TestResolveOriginHead` · `TestResolveMain` · `…NonCommitFallsToMain` · `…UnbornFallsToMain` |
+
+> M5 首轮因**改法把 `strings` 导入变成未使用**而 build failed（不是被用例杀掉）——那不是有效变异，
+> 改用 `strings.Clone(ref)`（保持导入有效）后重跑，`TestResolveOriginHead` FAIL。**build failed 不计入"判据有牙"**。
+> M6 是本组最重要的一条：它就是 `GAP-031` 的**回归形态**（守卫比对当前 HEAD 而非主干），有四格同时变红。
+
