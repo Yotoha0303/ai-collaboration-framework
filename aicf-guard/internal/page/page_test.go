@@ -300,4 +300,77 @@ func TestReadPageNameStripsLeadingBOM(t *testing.T) {
 	}
 }
 
+// TestReadPageNameWhitespaceClassIsAtLeastDotNetWidth pins the MEASURED
+// direction of the whitespace-class difference, because the prose in this area
+// had it backwards once (an earlier revision claimed Go leaves \v / NBSP /
+// U+0085 in the name; it strips them).
+//
+// Measured 2026-10-28: unicode.IsSpace is true for U+000B, U+00A0 and U+0085, so
+// strings.TrimSpace removes them — Go is at least as wide as .NET's
+// String.Trim() here. The real divergence of this family is in the page regex's
+// `\s` (ASCII-only in Go), pinned separately by
+// TestReadHeadUnicodeWhitespaceIsASilentDivergence.
+func TestReadPageNameWhitespaceClassIsAtLeastDotNetWidth(t *testing.T) {
+	for _, c := range []struct{ name, content string }{
+		{"latin-1 NEL U+0085", "\u0085name.html\u0085"},
+		{"vtab U+000B", "\vname.html\v"},
+		{"nbsp U+00A0", "\u00a0name.html\u00a0"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			p := filepath.Join(t.TempDir(), "progress-page.txt")
+			if err := os.WriteFile(p, []byte(c.content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			got := page.ReadPageName(p)
+			if got.Fault || got.Name != "name.html" {
+				t.Errorf("content=%q → (%q, fault=%v); want (\"name.html\", false) — TrimSpace strips these", c.content, got.Name, got.Fault)
+			}
+		})
+	}
+}
+
+// TestReadHeadUnicodeWhitespaceIsASilentDivergence pins the residual that the
+// old comment mis-attributed to Trim: Go's regexp `\s` is ASCII-only
+// ([ \t\n\f\r]), whereas .NET's is Unicode-aware. So a status bar separated from
+// `head` by \v, NBSP (U+00A0) or U+0085 matches on the .NET side and is SILENT here.
+//
+// This is asserted as a MISS on purpose (the same "pin the residual" style as
+// the <span> case). Recorded in docs/changes/005 §十 as a GAP-025 residual, not
+// fixed in M0 — widening the class is a behaviour change that needs its own
+// decision plus its own parity run against the .ps1.
+func TestReadHeadUnicodeWhitespaceIsASilentDivergence(t *testing.T) {
+	for _, c := range []struct{ name, html string }{
+		{"vtab U+000B", "<div>\vhead <b>deadbeef</b></div>"},
+		{"nbsp U+00A0", "<div>\u00a0head <b>deadbeef</b></div>"},
+		{"nel U+0085", "<div>\u0085head <b>deadbeef</b></div>"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := filepath.Join(t.TempDir(), "page.html")
+			if err := os.WriteFile(f, []byte(c.html), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if got, ok := page.ReadHead(f); ok {
+				t.Errorf("ReadHead=(%q,true); want a MISS — Go \\s is ASCII-only (known residual, GAP-025)", got)
+			}
+		})
+	}
+	// Control: the ASCII separators DO match, so the test above is about the
+	// class, not about the marker being unmatchable.
+	for _, c := range []struct{ name, html string }{
+		{"space", "<div> head <b>deadbeef</b></div>"},
+		{"tab", "<div>\thead <b>deadbeef</b></div>"},
+		{"newline", "<div>\nhead <b>deadbeef</b></div>"},
+	} {
+		t.Run("control "+c.name, func(t *testing.T) {
+			f := filepath.Join(t.TempDir(), "page.html")
+			if err := os.WriteFile(f, []byte(c.html), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if got, ok := page.ReadHead(f); !ok || got != "deadbeef" {
+				t.Errorf("ReadHead=(%q,%v); want (\"deadbeef\",true)", got, ok)
+			}
+		})
+	}
+}
+
 const fullSHA = "0123456789abcdef0123456789abcdef01234567"

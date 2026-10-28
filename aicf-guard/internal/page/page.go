@@ -120,11 +120,37 @@ type NameResult struct {
 // Only the LEADING BOM is stripped (what the decoder would consume). A BOM in
 // the middle is part of the name, exactly as it would be for Get-Content.
 //
-// Trim matches PowerShell's String.Trim(): whitespace on both ends, including
-// the trailing newline a one-line file carries; it does NOT split on inner
-// newlines, so a two-line pointer is a name with a newline in it — which then
-// fails to name any real file and lands on the silent "no page" branch, same as
-// the .ps1.
+// # Trimming: NOT identical to .NET — and which side is wider is measured
+//
+// Trim removes whitespace on both ends, including the trailing newline a
+// one-line file carries; it does NOT split on inner newlines, so a two-line
+// pointer is a name with a newline in it — which then fails to name any real
+// file and lands on the silent "no page" branch, same as the .ps1.
+//
+// The two implementations do NOT use the same character class. Measured
+// 2026-10-28 with `unicode.IsSpace` / `strings.TrimSpace` directly:
+//
+//	U+000B \v   IsSpace=true   U+00A0 NBSP IsSpace=true   U+0085 NEL IsSpace=true
+//
+// So Go's TrimSpace is at least as WIDE as .NET's String.Trim() on those
+// characters — it does not "miss" them. The direction of the residual is
+// therefore the opposite of the regex case below, and an earlier revision of
+// this comment had it backwards (it claimed Go leaves \v / NBSP / U+0085 in
+// place; that claim is false and this note replaces it).
+//
+// The real, measured divergence of this family lives one level up, in the PAGE
+// regex's `\s` rather than in Trim: Go's `regexp` `\s` is ASCII-only
+// ([ \t\n\f\r]), while .NET's is Unicode-aware. Measured on headRe's prefix:
+//
+//	"<div>\vhead"    Go \s matches = false    .NET \s would match
+//	"<div>\u00a0head" Go \s matches = false    .NET \s would match
+//	"<div>\u0085head" Go \s matches = false    .NET \s would match
+//
+// i.e. a page whose status bar is separated from `head` by one of those
+// characters blocks on the .NET side and is SILENT on the Go side. Recorded in
+// docs/changes/005 §十 as a GAP-025 residual — NOT fixed here: M0's goal is byte
+// parity with the legacy path, and widening `\s` to Unicode classes would be a
+// behaviour change that needs its own decision (and its own parity run).
 func ReadPageName(pointerPath string) NameResult {
 	data, err := os.ReadFile(pointerPath)
 	if err != nil {
