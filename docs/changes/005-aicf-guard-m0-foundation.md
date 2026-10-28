@@ -554,3 +554,89 @@ $ 指针指向不存在的页名 gone.html → 无输出            exit=0
 §1.3.2 探针+金丝雀 ✅（M3/M4）；§1.3.4 主干三级 + reason 点名 ✅（M6/M8）；§1.3.5 SHA 双侧归一 ✅（M7）；
 §1.3.6 正则同款静默 ✅（沙箱 A5）；GAP-002 指针异常 ✅（M1/M2）；GAP-012 unborn 静默 ✅（M6）。
 
+### 7.6 U6 · 对拍 harness（`internal/parallel` + `tools/parallel`）
+
+> ## ⚠️ 对拍准出：**未验证**（本机无 PowerShell 运行时）
+>
+> `command -v pwsh` ⇒ exit 1 · `command -v powershell` ⇒ exit 1（`2026-10-28` 实测，两次独立确认）。
+> **本节任何一条读数都不得被读成「Go 版与 .ps1 逐字节一致」**。harness 在无 oracle 时的
+> verdict 是 **`SKIP`**，**不是 `PASS`**，且二者 exit code 不同（2 vs 0）。
+
+#### 7.6.1 设计（为什么是"可注入 oracle"而不是"写死跑 .ps1"）
+
+| 判据 | 实现 |
+| --- | --- |
+| 有 oracle ⇒ 真对拍 | `-oracle <pwsh 路径>`：每场景各建一个沙箱跑两路，**exit / stdout / stderr 三者逐字节比**（stderr 与 stdout **分开**捕获——契约里 block 走 stdout、notice 走 stderr，合并就抹掉了被比的那件事） |
+| 无 oracle ⇒ 明确 SKIP | 每场景一行 `SKIP <名> — oracle not configured…；parity is UNVERIFIED`，末行 `VERDICT SKIP` |
+| **跳过与通过必须可区分** | exit code：`0 PASS · 1 DIFF · 2 SKIP · 3 ERROR`（`RunKind.ExitCode()`）。`go test` 只能出 0/1，故另设 `tools/parallel` 可执行入口 |
+| 场景清单先于 oracle 就位 | 14 个具名场景（A1–A13 + P2/P3/P6/P4-P5），每个带**输入配方 + 期望 exit/stdout/stderr** |
+| 沙箱两侧**可逐字节比** | fixture 提交钉死 `GIT_AUTHOR_DATE`/`GIT_COMMITTER_DATE`（`fixtureDate`）——否则两侧 commit id 不同，而 block 的 `reason` **内嵌** short SHA（`.ps1:403`），会因与移植无关的原因"不等" |
+
+**为什么不是 `aicf-guard` 的子命令**：ADR §2.1 明文「除 `--version` 外不发明新子命令名」，迁移期子命令名
+须与 `.ps1` 一一可比。故 harness 是独立的开发工具 `aicf-guard/tools/parallel`。
+
+**为什么要 `.ps1` 副本放在沙箱的 `.claude/hooks/` 下跑**：`.ps1` 从**自身路径**推工作区
+（`Split-Path -Parent $PSCommandPath`，`.ps1:185`）。在别处启动它会解析到另一个工作区，比的就是错的东西。
+调用参数用**与 hook 配置相同的** `-NoProfile -ExecutionPolicy Bypass -File`（取自 `.claude/settings.json`）。
+
+#### 7.6.2 正向实测（无 oracle —— 本机唯一可跑的形态）
+
+```
+$ go build -C aicf-guard -o /tmp/aicf-guard .
+$ go build -o /tmp/aicf-parallel ./tools/parallel     # 在 aicf-guard/ 下
+$ /tmp/aicf-parallel -guard /tmp/aicf-guard
+SKIP  A1 正控 页面存在+错SHA → decision:block — oracle not configured (set AICF_ORACLE); the .ps1 was NOT run, so parity is UNVERIFIED
+SKIP  A2 对照 页面存在+SHA一致 → 静默 — …
+…（14 行 SKIP）…
+VERDICT SKIP — 14 scenario(s)
+$ echo $?
+2                                                     # ← SKIP ≠ PASS（PASS 是 0）
+```
+
+> ⚠️ 用 `go run ./tools/parallel` 时 shell 看到的是 **1**（`go run` 把子进程的 2 归一成 1 并打印
+> `exit status 2`）。**必须用编译后的产物**才拿得到 2/3 的区分——这一点已实测，写在这里免得下一个人误读。
+
+#### 7.6.3 负向实测（harness 自身有牙：DIFF 与 ERROR 都能报出来）
+
+没有 PowerShell 时，**"harness 能不能报出不一致"**必须用假二进制证明，否则它可能只会永远 SKIP。
+
+```
+$ /tmp/aicf-parallel -guard /tmp/aicf-guard -oracle /nonexistent/pwsh -legacy ../.claude/hooks/check-progress.ps1
+VERDICT ERROR — scenario "A1 …" (oracle side): fork/exec /nonexistent/pwsh: no such file or directory
+$ echo $?
+3                                                     # ← oracle 配了但跑不起来 = ERROR，不是 SKIP/PASS
+```
+
+`go test` 侧另有 5 格直接证明 verdict 可区分（假二进制对打）：
+
+| 用例 | 注入 | 期望 |
+| --- | --- | --- |
+| `TestRunDiffWithDivergingOracle` | go 打印 `from-go`、oracle 打印 `from-ps1` | `DIFF`，且 `Summary()` 同时列出两侧 |
+| `TestRunExitCodeDifferenceDetected` | 输出相同、**exit 不同** | `DIFF`（stdout 不是全部契约） |
+| `TestRunPassWithMatchingOracle` | 两侧完全一致 | `PASS` |
+| `TestRunSkipWithoutOracle` | 不配 oracle | `SKIP`，且 exit code **≠** PASS 的 |
+| `TestRunAllSkippedScenariosStaysSkip` | 唯一场景被平台门禁跳过 | **仍是 `SKIP`**（不能因"比过了 0 条"而转绿） |
+| `TestRunExpectationViolationIsError` | Go 侧违反自己写下的期望 | `ERROR`——**无 oracle 时的运行不是空跑** |
+
+#### 7.6.4 在有 PowerShell 的机器上复跑的确切命令
+
+```bash
+# 1) 取回原实现作为 oracle（U7 已把它移到 legacy 文件；见 §7.7）
+git show 8e744cd:.claude/hooks/check-progress.ps1 > .claude/hooks/check-progress.legacy.ps1
+
+# 2) 构建 + 对拍
+cd aicf-guard
+go build -o /tmp/aicf-guard .
+go build -o /tmp/aicf-parallel ./tools/parallel
+/tmp/aicf-parallel -guard /tmp/aicf-guard \
+    -oracle "$(command -v pwsh || command -v powershell)" \
+    -legacy ../.claude/hooks/check-progress.legacy.ps1
+echo "exit=$?"     # 0 = 逐字节一致（准出）；1 = 有差异（阻断）；3 = harness/oracle 出错
+```
+
+**判据**：`exit=0` **且**末行 `VERDICT PASS` 才算对拍准出。出现任何 `DIFF` ⇒ 该 PR 阻断（ADR §2.5）。
+**本机无法执行此命令**——`pwsh`/`powershell` 均不存在，故**M0 的对拍准出保持未验证**。
+
+**判据不变量对照（ADR §2.5 / §6.1）**：对拍**未满足**（不是"不适用"）——按 `AGENTS.md` §2，对应物存在、
+判据存在、但**本机无运行时**，故记为「未验证 + 原因」，交三跳链裁决。
+
