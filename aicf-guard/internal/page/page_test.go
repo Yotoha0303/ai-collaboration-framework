@@ -373,4 +373,49 @@ func TestReadHeadUnicodeWhitespaceIsASilentDivergence(t *testing.T) {
 	}
 }
 
+// TestReadHeadTwoMarkersVerdictDependsOnOrder pins GAP-048: with two WELL-FORMED
+// markers the first one wins, so the guard's verdict is a function of the ORDER
+// of the two status bars rather than of their content. Swapping them flips the
+// answer.
+//
+// This is written as an explicit two-sided assertion (both orders, both answers)
+// because a one-sided test would look like a description of correct behaviour.
+// Naming both halves is what makes the direction-dependence visible: it is the
+// reason a page carrying "top status bar + a pasted older one" can have its stale
+// copy waved through silently.
+//
+// Not fixed in M0 (see the comment on headRe): [regex]::Match takes the first
+// match too, so fixing it here would break byte parity with the legacy path. The
+// test exists so a later fix has to change this expectation deliberately.
+func TestReadHeadTwoMarkersVerdictDependsOnOrder(t *testing.T) {
+	cases := []struct {
+		name string
+		html string
+		want string
+	}{
+		{
+			name: "correct marker first → stale copy invisible",
+			html: `<div>head <b>deadbee1</b></div><div>head <b>0000000</b></div>`,
+			want: "deadbee1",
+		},
+		{
+			name: "stale marker first → correct copy invisible",
+			html: `<div>head <b>0000000</b></div><div>head <b>deadbee1</b></div>`,
+			want: "0000000",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f := filepath.Join(t.TempDir(), "page.html")
+			if err := os.WriteFile(f, []byte(c.html), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			got, ok := page.ReadHead(f)
+			if !ok || got != c.want {
+				t.Errorf("ReadHead=(%q,%v); want (%q,true) — first WELL-FORMED marker wins (GAP-048)", got, ok, c.want)
+			}
+		})
+	}
+}
+
 const fullSHA = "0123456789abcdef0123456789abcdef01234567"

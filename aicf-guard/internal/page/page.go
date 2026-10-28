@@ -35,6 +35,27 @@ const DefaultPageName = "project-progress.html"
 // cannot be matched at all, so the engine advances and the SECOND marker wins.
 // That is also what [regex]::Match does in the .ps1 — same engine semantics —
 // and it is why two markers of one page must not be treated as "first wins".
+//
+// # Two well-formed markers: the verdict depends on their ORDER (known residual)
+//
+// With two WELL-FORMED markers the first one wins, so the answer is a function of
+// order, not of content (measured 2026-10-28, qa-validator A2.8/A2.9, GAP-048):
+//
+//	<div>head <b>{true SHA}</b></div><div>head <b>0000000</b></div>  → SILENT
+//	<div>head <b>0000000</b></div><div>head <b>{true SHA}</b></div>  → block
+//
+// i.e. a page with a correct status bar at the top and a pasted stale one
+// further down waves the stale copy through, and nothing says so. This is a
+// consequence of D4's "two copies of one fact, one of them older" running into a
+// guard that only ever reads one.
+//
+// It is NOT fixed here, deliberately: `[regex]::Match` picks the first match too,
+// so changing this would break M0's byte-parity goal and turn a true parity run
+// into a false DIFF. The behaviour is pinned by TestReadHeadMultipleMarkers and
+// TestReadHeadTwoMarkersVerdictDependsOnOrder so that any future change to it is
+// a deliberate act. Fix options (take ALL markers; treat multi-marker as no
+// marker; move the SHA into structured metadata) are recorded in the ledger
+// (GAP-048) for a decision that belongs to a later milestone, not to a port.
 var headRe = regexp.MustCompile(`<div[^>]*>\s*head\s*<b[^>]*>\s*([0-9a-fA-F]{7,40})\s*</b[^>]*>\s*</div[^>]*>`)
 
 // ReadHead reads the progress page at `path` and extracts the recorded HEAD SHA
