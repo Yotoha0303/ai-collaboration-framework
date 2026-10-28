@@ -53,7 +53,10 @@ const (
 	// KindSkip: no oracle was supplied, so no comparison happened.
 	KindSkip
 	// KindError: the harness could not run (missing binary, missing .ps1,
-	// setup failure). Never conflated with a pass.
+	// setup failure, timeout) OR a scenario's Go side violated its own
+	// documented Expect. Never conflated with a pass. A setup failure still
+	// aborts the run; an Expect violation does NOT — it is recorded against
+	// that scenario and the remaining scenarios are still processed (see Run).
 	KindError
 )
 
@@ -116,6 +119,12 @@ type Comparison struct {
 	// Note carries a mismatch description, or the reason the comparison was
 	// skipped.
 	Note string
+	// ExpectErr is non-empty when the Go side contradicted the scenario's own
+	// documented Expect. It is a property of THIS scenario only: unlike a
+	// setup error it never stops the run, because the whole point of the
+	// expectation is to make a no-oracle run meaningful for EVERY scenario —
+	// aborting on the first one would silently reduce the covered set to one.
+	ExpectErr string
 }
 
 // Matches reports whether the two sides agreed byte for byte.
@@ -130,13 +139,23 @@ func (c Comparison) Matches() bool {
 type Report struct {
 	Kind        RunKind
 	Comparisons []Comparison
-	// Err is set only for KindError.
+	// Err is set only for the FATAL flavour of KindError (the harness could not
+	// run: missing binary, unreadable .ps1, sandbox setup failure, timeout). A
+	// scenario that violates its documented Expect also makes Kind ERROR, but
+	// reports it per-scenario via Comparison.ExpectErr and does NOT abort.
 	Err error
 }
 
 // Summary renders one line per scenario plus a final verdict line. The verdict
 // line always starts with the Kind, so `grep '^SKIP'` finds exactly the
 // scenarios that were not compared.
+//
+// The verdict line reports COVERAGE as two separate counts — COMPARED n/N and
+// SKIPPED k/N — because a single "%d scenario(s)" figure let a run that skipped
+// everything look the same size as a run that compared everything. An
+// expectation violation is reported per scenario (EXPECT …) and counted
+// separately, so "the Go side disagreed with its own documentation" cannot be
+// read as "the two implementations were compared and agreed".
 func (r Report) Summary() string {
 	var b strings.Builder
 	for _, c := range r.Comparisons {
@@ -149,13 +168,42 @@ func (r Report) Summary() string {
 			fmt.Fprintf(&b, "DIFF  %s\n      go:     %s\n      oracle: %s\n",
 				c.Name, c.Go, c.Oracle)
 		}
+		if c.ExpectErr != "" {
+			fmt.Fprintf(&b, "EXPECT %s — %s\n      go:     %s\n", c.Name, c.ExpectErr, c.Go)
+		}
+	}
+	compared, skipped, violated := r.counts()
+	total := len(r.Comparisons)
+	fmt.Fprintf(&b, "VERDICT %s — COMPARED %d/%d, SKIPPED %d/%d",
+		r.Kind, compared, total, skipped, total)
+	if violated > 0 {
+		fmt.Fprintf(&b, ", EXPECT-VIOLATIONS %d/%d", violated, total)
 	}
 	if r.Err != nil {
-		fmt.Fprintf(&b, "VERDICT %s — %v\n", r.Kind, r.Err)
-	} else {
-		fmt.Fprintf(&b, "VERDICT %s — %d scenario(s)\n", r.Kind, len(r.Comparisons))
+		fmt.Fprintf(&b, " — %v", r.Err)
 	}
+	b.WriteString("\n")
 	return b.String()
+}
+
+// counts tallies coverage: how many scenarios were actually compared, how many
+// were skipped, and how many violated their documented expectation. Every
+// comparison is either comparable or not, so compared+skipped == total always;
+// `violated` is ORTHOGONAL to that split — a no-oracle scenario can be skipped
+// AND violate its expectation at the same time, which is the honest
+// description: it ran, it was not compared, and it failed its own assertion.
+func (r Report) counts() (compared, skipped, violated int) {
+	for _, c := range r.Comparisons {
+		if c.Comparable {
+			compared++
+		} else {
+			skipped++
+		}
+		if c.ExpectErr != "" {
+			violated++
+		}
+	}
+	return compared, skipped, violated
 }
 
 // Options configures a run.
@@ -232,11 +280,13 @@ func Run(opts Options) Report {
 		}
 		cmp.Go = goRes
 
+		// A violated expectation is recorded AGAINST THIS SCENARIO and the run
+		// continues. Returning here (the original behaviour) meant the remaining
+		// scenarios were never processed at all, and the summary then reported
+		// them as absent rather than as skipped — qa-validator P1-5.
 		if msg := sc.Expect.check(goRes); msg != "" {
+			cmp.ExpectErr = fmt.Sprintf("violates its documented expectation: %s", msg)
 			rep.Kind = KindError
-			rep.Err = fmt.Errorf("scenario %q violates its documented expectation: %s", sc.Name, msg)
-			rep.Comparisons = append(rep.Comparisons, cmp)
-			return rep
 		}
 
 		if !compare {
@@ -256,7 +306,11 @@ func Run(opts Options) Report {
 		cmp.Oracle = orRes
 		cmp.Comparable = true
 		if !cmp.Matches() {
-			rep.Kind = KindDiff
+			// Never downgrade an ERROR to a DIFF: an expectation violation
+			// already means the run cannot be read as "the port is equivalent".
+			if rep.Kind != KindError {
+				rep.Kind = KindDiff
+			}
 			cmp.Note = "byte mismatch"
 		}
 		rep.Comparisons = append(rep.Comparisons, cmp)

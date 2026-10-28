@@ -153,6 +153,129 @@ func TestRunExpectationViolationIsError(t *testing.T) {
 	}
 }
 
+// TestRunContinuesAfterExpectationViolation is qa-validator P1-5.
+//
+// The original Run() did `return rep` the moment ONE scenario violated its
+// Expect, so every scenario after it was never executed. The summary then said
+// "N scenario(s)" with N = the number of scenarios reached, i.e. the harness
+// reported a smaller run as if it were the run — a green-looking report that had
+// silently stopped checking.
+//
+// The assertion is deliberately about the SECOND and THIRD scenarios being
+// PROCESSED (present in the report), not merely about the verdict: a fix that
+// still bailed out would produce a shorter Comparisons slice and fail here.
+func TestRunContinuesAfterExpectationViolation(t *testing.T) {
+	// The fake binary ignores its args and prints nothing, so the three scenarios
+	// differ ONLY in their Expect. That is enough: "was scenario 3 processed" is
+	// observable through the report's own per-scenario entries.
+	bin := fakeBin(t, "#!/bin/sh\nexit 0\n")
+
+	good := passthroughScenario()
+	good.Name = "s1 good"
+
+	bad := passthroughScenario()
+	bad.Name = "s2 violates"
+	bad.Expect = Expect{Code: 0, StdoutContains: []string{"never-printed"}}
+
+	after := passthroughScenario()
+	after.Name = "s3 after the violation"
+
+	rep := Run(Options{GuardBinary: bin, Scenarios: []Scenario{good, bad, after}})
+
+	if len(rep.Comparisons) != 3 {
+		t.Fatalf("len(Comparisons)=%d want 3 — a violation must not abandon the remaining scenarios: %v",
+			len(rep.Comparisons), rep.Comparisons)
+	}
+	if names := []string{rep.Comparisons[0].Name, rep.Comparisons[1].Name, rep.Comparisons[2].Name}; names[1] != "s2 violates" || names[2] != "s3 after the violation" {
+		t.Errorf("order/identity changed: %v", names)
+	}
+	if rep.Comparisons[0].ExpectErr != "" {
+		t.Errorf("s1 ExpectErr=%q want empty", rep.Comparisons[0].ExpectErr)
+	}
+	if rep.Comparisons[1].ExpectErr == "" {
+		t.Error("s2 ExpectErr is empty — the violation was not recorded against its scenario")
+	}
+	if rep.Comparisons[2].ExpectErr != "" {
+		t.Errorf("s3 ExpectErr=%q want empty (it was processed AFTER the violation)", rep.Comparisons[2].ExpectErr)
+	}
+	if rep.Kind != KindError {
+		t.Errorf("Kind=%v want ERROR (a violation is never a pass)", rep.Kind)
+	}
+	if rep.Err != nil {
+		t.Errorf("Err=%v want nil — an Expect violation is per-scenario, not fatal", rep.Err)
+	}
+}
+
+// TestSummaryReportsComparedAndSkippedSeparately: the verdict line must expose
+// COVERAGE. The old line printed one number (`%d scenario(s)` = len(Comparisons)),
+// which made "all 15 skipped" and "all 15 compared" print the same size — the
+// exact SKIP/PASS confusion the harness exists to prevent.
+func TestSummaryReportsComparedAndSkippedSeparately(t *testing.T) {
+	t.Run("all skipped, no oracle", func(t *testing.T) {
+		bin := fakeBin(t, "#!/bin/sh\nexit 0\n")
+		rep := Run(Options{GuardBinary: bin, Scenarios: []Scenario{
+			passthroughScenario(), passthroughScenario(), passthroughScenario(),
+		}})
+		sum := rep.Summary()
+		for _, want := range []string{"COMPARED 0/3", "SKIPPED 3/3", "VERDICT SKIP"} {
+			if !contains(sum, want) {
+				t.Errorf("summary %q must contain %q", sum, want)
+			}
+		}
+	})
+
+	t.Run("mixed: one compared, one gated", func(t *testing.T) {
+		bin := fakeBin(t, "#!/bin/sh\nexit 0\n")
+		gated := passthroughScenario()
+		gated.Name = "gated"
+		gated.SkipReason = func() string { return "test gate" }
+		rep := Run(Options{
+			GuardBinary:  bin,
+			Oracle:       fakeBinNamed(t, "sh", "#!/bin/sh\nexit 0\n"),
+			LegacyScript: fakeScript(t, "#!/bin/sh\nexit 0\n"),
+			Scenarios:    []Scenario{passthroughScenario(), gated},
+		})
+		sum := rep.Summary()
+		for _, want := range []string{"COMPARED 1/2", "SKIPPED 1/2", "VERDICT PASS"} {
+			if !contains(sum, want) {
+				t.Errorf("summary %q must contain %q", sum, want)
+			}
+		}
+	})
+
+	t.Run("violations are counted and named", func(t *testing.T) {
+		bin := fakeBin(t, "#!/bin/sh\nexit 0\n")
+		bad := passthroughScenario()
+		bad.Name = "bad"
+		bad.Expect = Expect{Code: 0, StdoutContains: []string{"never-printed"}}
+		rep := Run(Options{GuardBinary: bin, Scenarios: []Scenario{bad, passthroughScenario()}})
+		sum := rep.Summary()
+		for _, want := range []string{"EXPECT bad", "EXPECT-VIOLATIONS 1/2", "VERDICT ERROR"} {
+			if !contains(sum, want) {
+				t.Errorf("summary %q must contain %q", sum, want)
+			}
+		}
+	})
+
+	t.Run("a diff never downgrades an expectation violation", func(t *testing.T) {
+		// Go side prints nothing and violates its Expect; the oracle prints
+		// differently, which would otherwise set DIFF. ERROR must win: the run
+		// cannot be read as "equivalent but different".
+		bin := fakeBin(t, "#!/bin/sh\nexit 0\n")
+		bad := passthroughScenario()
+		bad.Expect = Expect{Code: 0, StdoutContains: []string{"never-printed"}}
+		rep := Run(Options{
+			GuardBinary:  bin,
+			Oracle:       fakeBinNamed(t, "sh", "#!/bin/sh\necho other\n"),
+			LegacyScript: fakeScript(t, "#!/bin/sh\necho other\n"),
+			Scenarios:    []Scenario{bad},
+		})
+		if rep.Kind != KindError {
+			t.Errorf("Kind=%v want ERROR (a DIFF must not mask a violated expectation)", rep.Kind)
+		}
+	})
+}
+
 // TestRunAllSkippedScenariosStaysSkip: an oracle that is configured but whose
 // only scenario is platform-gated must NOT become PASS by defaulting.
 func TestRunAllSkippedScenariosStaysSkip(t *testing.T) {
