@@ -1,7 +1,7 @@
 ---
 name: finops-controller
 description: 云成本与资源控制师（注册表 #9）。当任务落在【设计评审 / 部署 / 运营】需要成本评估、闲置防范或弹性伸缩策略时使用（横向约束，不主责某一环）。
-tools: Read, Write, Edit, Grep, Glob, PowerShell
+tools: Read, Write, Edit, Grep, Glob, Bash
 model: inherit
 color: magenta
 ---

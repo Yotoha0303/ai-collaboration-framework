@@ -1,7 +1,7 @@
 ---
 name: qa-validator
 description: 混沌工程与质量验证师（注册表 #6）。当任务落在【03 测试 / 演练 / 代码审查】阶段，需要极限用例、压测、并发竞争与网络抖动注入时使用。
-tools: Read, Write, Edit, Grep, Glob, PowerShell
+tools: Read, Write, Edit, Grep, Glob, Bash
 model: inherit
 color: orange
 ---
