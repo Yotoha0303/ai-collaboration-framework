@@ -120,7 +120,7 @@ aicf-guard --version  # ← 新增（04 环 REVISION 断言对齐，见下）
 
 | 阶段 | 动作 | 准出 |
 | --- | --- | --- |
-| **M0** | 建 `aicf-guard/` Go module 骨架 + 共享库 + `progress` 子命令；`.claude/hooks/check-progress.ps1` 改为薄转发层（调 `aicf-guard progress`，**二进制缺失 ⇒ 走 notice 分支 `exit 1`+stderr，不得静默**） | 同沙箱对拍逐字节一致；selftest A 组全 PASS（含新增「二进制缺失」格，§6.6）；`.gitignore` 排除规则就位（§6.8 R10）；`--version` 子命令就位（§2.1 R4） |
+| **M0** | 建 `aicf-guard/` Go module 骨架 + 共享库 + `progress` 子命令；`.claude/hooks/check-progress.ps1` 改为薄转发层（调 `aicf-guard progress`，**二进制缺失 ⇒ 走 notice 分支 `exit 1`+stderr，不得静默**） | 同沙箱对拍逐字节一致（**⚠️ 修订 `2026-10-28`：准出归属见 `DEFER-019`——本机无 PowerShell 时该条件不可执行，改为「harness 就绪 + `SKIP` 与 `PASS` 退出码可区分」，实跑对拍顺延至 oracle 落定后的第一个 PR**）；selftest A 组全 PASS（**⚠️ 修订 `2026-10-28`：同上，`.ps1` 尺子在本机不可执行——A 组实跑顺延至有 PowerShell 的环境**）；**「二进制缺失」格（§6.6）—— 修订 `2026-10-28`：该格改为 M3 准出（`DEFER-020`），M0 只要求**契约已实现**（转发层 `exit 1`+stderr，fail-closed）；`.gitignore` 排除规则就位（§6.8 R10）；`--version` 子命令就位（§2.1 R4） |
 | **M1** | `numbers` 子命令 + 转发层 | B 组 PASS |
 | **M2** | `inject` + `adapter` 子命令 + `.agents/hooks/` 转发层 | D3 格（退出码 ⊆ adapter 覆盖）仍 PASS |
 | **M3** | `selftest` 子命令（最复杂，含沙箱自铺/自清/G1-G2 注入） | C/E/F 组全 PASS；**耗时 < 1s**（`DEFER-014` 解除）；**M3 基线锁定见 §6.3 R2** |
@@ -218,6 +218,10 @@ done
 ### 6.6 薄转发层 fail-closed
 
 selftest 增格：临时移走 `aicf-guard` 二进制 ⇒ `check-progress.ps1` 转发层 `exit 1`+stderr（非静默）；`inject`/`adapter` 转发层输出 `{}`/`{"decision":"allow"}`。
+
+> ⚠️ **准出归属修订（`2026-10-28`，人工裁定 → `DEFER-020`）**：本节的**契约**由 M0 实现（转发层缺失分支 `exit 1`+stderr，已落地）；**验证它的那一格**从 M0 **顺延到 M3**——原因是该格的载体是 `.ps1` 自测尺子，而 M0 的开发机上 `pwsh`/`powershell` **均未安装**（同 `DEFER-019`），且 M3 的 `selftest` 子命令本来就要重写整个 C/E/F 组。**这不算「M0 少做一件」**：M0 的准出改为「契约已实现」，M3 的准出才是「该格有注入用例并通过」。
+>
+> ⚠️ **另：本节断言的「非静默」在 Claude Code 宿主上**不成立**（`2026-10-28` 实测 → `GAP-046`）**：转义为 `exit 1` + stderr 的 notice，Stop hook **只读 stdout 的 JSON**，故用户侧**看不到任何提示**（实测：守卫完全不存在时宿主照常结束回合）。**「用户看得见 notice」是一个未经验证的前提**，真修需改发布契约（另退出码 + adapter 跟进），不在本 ADR 作用域内。
 
 ### 6.7 Release 工作流（R6，M0 前定 · sre-operator 互审 T4 收敛）
 
@@ -364,7 +368,7 @@ done | sort -u
 
 | 阶段 | 预计编号 | 动作 | 准出 |
 | --- | --- | --- | --- |
-| **M0** | 005（以实测为准） | `aicf-guard/` Go module + 共享库（§2.2）+ `progress` 子命令 + `check-progress.ps1` 转发层 + 对拍测试 + `.gitignore` 同步（§6.8）+ `--version` 子命令 | 同沙箱对拍逐字节一致；selftest A 组全 PASS；`.gitignore` 含排除规则（§6.8）；`--version` 输出符合 §2.1 |
+| **M0** | 005（以实测为准） | `aicf-guard/` Go module + 共享库（§2.2）+ `progress` 子命令 + `check-progress.ps1` 转发层 + 对拍测试 + `.gitignore` 同步（§6.8）+ `--version` 子命令 | 同沙箱对拍逐字节一致（**修订 `2026-10-28` → `DEFER-019`：harness 就绪 + `SKIP`≠`PASS`；实跑顺延至 oracle 落定**）；selftest A 组全 PASS（**同 `DEFER-019`：`.ps1` 尺子本机不可执行，顺延**）；**「二进制缺失」格 → M3（`DEFER-020`）**；`.gitignore` 含排除规则（§6.8）；`--version` 输出符合 §2.1 |
 | **M1** | 006（以实测为准） | `numbers` 子命令 + 转发层 + 对拍 | B 组 PASS |
 | **M2** | 007（以实测为准） | `inject` + `adapter` + `.agents/hooks/` 转发层 | D3 格（退出码 ⊆ adapter 覆盖）仍 PASS |
 | **M3** | 008（以实测为准） | `selftest` 子命令（最复杂；含沙箱自铺/自清/G1-G2 注入）；**M3 基线锁定见 §6.3 R2** | C/E/F 组全 PASS；**耗时 < 1s**（`DEFER-014` 解除） |
@@ -396,7 +400,10 @@ done | sort -u
 
 ### 8.3 新增 / 更新的 GAP（本 ADR 引发）
 
-- **`GAP-0xx`（待登记，M0 登记）**：**薄转发层在二进制缺失时的 fail-closed 契约**——本 ADR §3 规定转发层不得静默，但当前 `.ps1` 转发层尚未实现。M0 实现时若发现某子命令的「二进制缺失」无法与原「git 不可用」分支同形（如 `inject` 无 git 依赖，无对应 notice 分支），登记为独立缺口。
+- **`GAP-046`（已登记，`2026-10-28`）**：**「删掉二进制」在两个宿主上都等于「守卫静默退役」**——转发层已按本节实现 fail-closed（`exit 1` + stderr），但 ① Claude Code 的 Stop hook **只读 stdout 的 JSON**，`exit 1` + stderr 用户侧**不可见**（`2026-10-28` 实测：守卫整体不存在时宿主照常结束回合）；② Antigravity 的 `stop-adapter.ps1:54-59` 把 notice 转成非阻断 `continue`。**人工裁定（`2026-10-28`）：维持本 ADR、不改契约、登记缺口**；解除条件（两宿主各一条）见台账。
+- **`DEFER-019`（已登记，`2026-10-28`）**：**「同沙箱对拍逐字节一致」在本机不可执行**——`pwsh`/`powershell` 均未安装（正是本 ADR §1.1 的出发事件），旧路 oracle 跑不起来。**人工裁定：登记后放行**，但 harness 必须让 `SKIP`（exit 2）与 `PASS`（exit 0）**在退出码上不可混淆**（已落地：`aicf-guard/internal/parallel`）。待裁定项 = oracle 环境三选一（装 pwsh / 固定容器镜像 / Windows CI job）。
+- **`DEFER-020`（已登记，`2026-10-28`）**：§6.6 的「二进制缺失」格**从 M0 顺延到 M3**（载体是 `.ps1` 尺子，本机跑不了；M3 的 `selftest` 本来就要重写 C/E/F 组）。**契约本身已在 M0 实现**，顺延的只是验证它的那一格。
+- ~~**`GAP-0xx`（待登记，M0 登记）**：**薄转发层在二进制缺失时的 fail-closed 契约**~~——**已被上面的 `GAP-046` / `DEFER-020` 取代**（原文保留作为历史快照）：契约已由 M0 实现；真正登记下来的缺口不是「契约未实现」，而是「**实现的 fail-closed 在宿主侧被吞掉**」。
 - **`GAP-0xx`（待登记，R6 引发，M5 后评估）**：**Release 二进制无来源签名**（§6.7）——当前仅 `sha256` 完整性校验，无 GPG/cosign/sigstore。**理由**：本期流量小、GitHub Release 已有 HTTPS + 仓身份保证。**解除条件**：采用方报告需要 / 框架其他产物建签名链路时统一加。
 - **`GAP-0xx`（待登记，R6 引发，M5 后评估）**：**`windows/arm64` 产物支持**（§6.7 产物矩阵）——本期不支持，无人验证。**解除条件**：有采用方提需求。
 - **`GAP-029` 状态推进**：Go 版 selftest 的布局无关枚举是 `.ps1` 版同款逻辑的**重写**；`GAP-029` 现状「已实现（待独立复核）」⇒ Go 版交付后由 `falsifier` 独立证伪 ⇒ 可转「已解除」。
