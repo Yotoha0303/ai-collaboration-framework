@@ -1,0 +1,22 @@
+{
+    "hooks": {
+        "Stop": [
+            {
+                "hooks": [
+                    {
+                        "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/aicf-guard progress --workspace $CLAUDE_PROJECT_DIR",
+                        "statusMessage": "检查进度页是否落后于 HEAD",
+                        "timeout": 15,
+                        "type": "command"
+                    },
+                    {
+                        "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/aicf-guard numbers --workspace $CLAUDE_PROJECT_DIR",
+                        "statusMessage": "检查编号是否跨分支撞车",
+                        "timeout": 20,
+                        "type": "command"
+                    }
+                ]
+            }
+        ]
+    }
+}

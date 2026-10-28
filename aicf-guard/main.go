@@ -2,9 +2,9 @@
 // (check-progress, check-numbers, inject-agents-tail, stop-adapter, self-test)
 // per ADR-001 (docs/adr/ADR-001-aicf-guard.md).
 //
-// Shipped so far: the module skeleton, --version (M0 1st dispatch) and progress
-// (M0 2nd dispatch). The remaining subcommands land later (numbers = M1;
-// inject/adapter = M2; selftest = M3; doctor = M4 per ADR §3 / §8.2 R7). The
+// Shipped so far: the module skeleton, --version (M0 1st dispatch), progress
+// (M0 2nd dispatch) and numbers (M1). The remaining subcommands land later
+// (inject/adapter = M2; selftest = M3; doctor = M4 per ADR §3 / §8.2 R7). The
 // shared libraries (internal/git, internal/workspace, internal/mainline,
 // internal/sha, internal/page) back the shipped subcommands.
 package main
@@ -14,6 +14,7 @@ import (
 	"io"
 	"os"
 
+	"aicf-guard/internal/numbers"
 	"aicf-guard/internal/progress"
 )
 
@@ -55,7 +56,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 		// logic — including the deliberate silences — lives in the package so it
 		// can be exercised without a process boundary.
 		return progress.Run(args[1:], stdout, stderr, progress.DefaultDeps())
-	case "numbers", "inject", "adapter", "selftest", "doctor":
+	case "numbers":
+		// M1: the Go port of .claude/hooks/check-numbers.ps1. Same {0,1}
+		// contract as progress: 0 + silence = no collision, 1 + stderr =
+		// a collision or a notice that the guard could not run.
+		return numbers.Run(args[1:], stdout, stderr)
+	case "inject", "adapter", "selftest", "doctor":
 		// Not yet ported. Placeholder exits 1 with a clear stderr line so it is
 		// never mistaken for a silent success (fail-closed).
 		fmt.Fprintf(stderr, "aicf-guard: %q not implemented yet (see ADR-001 §3 for the milestone)\n", args[0])
