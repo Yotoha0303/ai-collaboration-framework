@@ -357,3 +357,82 @@ ok  	aicf-guard/internal/workspace	1.061s
 **判据不变量对照（ADR §1.3）**：§1.3.1（THE ONE RULE）✅ 仓库候选判定仍只经 `git.Checked(...).Exit == 0`；
 GAP-009（`.git` 存在 ≠ 是仓）✅ 由 M3 那格钉住；`.ps1:275-279`「ws 优先」✅ 由 M2 那格钉住。
 
+### 7.4 U4 · `internal/page`（复核工作树的两处修法 + 补 `ReadPageName`）
+
+#### 7.4.1 复核结论：`TestReadHeadMultipleMarkers` 的 `first1`/`second2` —— **测试数据错，不是包错**（确认）
+
+**结论：工作树的修法正确，随本包一并接管。**
+
+| 检查项 | 实测/推理 | 结论 |
+| --- | --- | --- |
+| `first1` / `second2` 是否匹配 `[0-9a-fA-F]{7,40}` | 二者都含非 hex 字符（`i`/`r`/`s`/`t`），**7 个字符里没有一个是合法 hex 序列**，故**不可匹配** | 原用例断言「应取第一个标记」时，`ReadHead` 返回 `("", false)` —— **包是对的** |
+| 包是否因此有缺陷 | 无：非 hex 的 7 字符 token **本来就不是 SHA**，返回 false 正是契约（`.ps1` 同款） | **不是包错** |
+| `.ps1` 会给同一答案吗 | 两者正则**逐字节相同**（已实测比对：`<div[^>]*>\s*head\s*<b[^>]*>\s*([0-9a-fA-F]{7,40})\s*</b[^>]*>\s*</div[^>]*>`，见 §7.4.4 命令）；`.NET` 与 Go 的 RE2 在这一模式上**无回溯语义差异**（无嵌套量词歧义） | **是**——但**注意**：`.ps1` 本机跑不了，此条是**同正则 + 同引擎语义的推理**，**非对拍实测** |
+| 修法 `deadbee1`/`deadbee2` 是否正确 | 二者都是 7 位合法 hex ⇒ 命中；且**互不相等** ⇒ 能真正区分「取第一个」与「取第二个」。实测 `MATCH "deadbee1"` | ✅ 正确 |
+| 新增 `TestReadHeadNonHexMarker` 是否钉住了该区别 | 是：它用**原来的** `first1`/`second2` 断言 `ok == false`，把「非 hex 不匹配」从"一个失败的用例"变成"一条被声明的契约" | ✅ 保留 |
+
+#### 7.4.2 改了什么
+
+| 文件 | 改动 |
+| --- | --- |
+| `page.go` | 新增 `DefaultPageName` 常量与 `ReadPageName(pointerPath) NameResult`——指针文件的**三态**（`.ps1:199-206`）：缺失⇒默认名且**不报故障**；有名字⇒trim 后返回；**有但读不出⇒报故障**（GAP-002）。补注释说明 M8/M9 的语义。 |
+| `page_test.go` | 补 `TestReadHeadSkipsMalformedFirstMarker`（3 子格）+ `ReadPageName` 5 格。 |
+
+**新发现（本次实测，值得钉住）**：正则命中「第一个**格式正确**的标记」，**不是**「第一个标记」。
+畸形首标记（`<b></b>` / `<b>()</b>` / `<b>abc</b>`）根本不可匹配，引擎会**跳过它**取第二个。
+实测：`<div>head <b></b></div><div>head <b>deadbee2</b></div>` ⇒ `MATCH "deadbee2"`。
+**`.ps1` 走同一分支**（`[regex]::Match` 同正则）。这一点此前无人写下：一页两条状态条时，守卫**执法的是第二条**，
+而读者的眼睛落在第一条 —— 已由 `TestReadHeadSkipsMalformedFirstMarker` 具名钉住。
+
+**为什么 `ReadPageName` 必须把「读不出」归到故障而非「缺失」**：`.ps1` 先用 `Test-Path` 判存在、再
+`Get-Content -ErrorAction SilentlyContinue`，故读错误落入它的 `else { $pointerFault = $true }` 分支。
+Go 侧若把任意 I/O 错误都当 `os.IsNotExist`，就会**静默换回默认页名**——正是这条检查要防的那件事。
+
+#### 7.4.3 正向实测
+
+```
+$ cd aicf-guard && gofmt -l internal/page/ ; go vet ./internal/page/
+（无输出）
+$ go test -race -count=1 -v ./internal/page/
+--- PASS: TestReadHead                      # 22 个子用例
+--- PASS: TestReadHeadMissingFile
+--- PASS: TestReadHeadUnreadableFile
+--- PASS: TestReadHeadMultipleMarkers       # 工作树已修：deadbee1/deadbee2
+--- PASS: TestReadHeadNonHexMarker          # 工作树已加：first1/second2 ⇒ false
+--- PASS: TestReadHeadSkipsMalformedFirstMarker   # 本次新增，3 子格
+--- PASS: TestReadPageNameAbsentUsesDefault       # 本次新增
+--- PASS: TestReadPageNameReadsTrimmedName
+--- PASS: TestReadPageNameEmptyIsFault
+--- PASS: TestReadPageNameUnreadableIsFault
+--- PASS: TestReadPageNameInnerNewlineKept
+ok  	aicf-guard/internal/page	1.018s
+```
+
+#### 7.4.4 正则逐字节比对（D1：不靠"看着一样"）
+
+```
+$ ps_re=$(sed -n '375p' .claude/hooks/check-progress.ps1 | sed -E "s/.*'([^']*)'.*/\1/")
+$ go_re=$(grep -o 'regexp.MustCompile(`[^`]*`)' aicf-guard/internal/page/page.go | sed -E 's/regexp.MustCompile\(`([^`]*)`\)/\1/')
+$ [ "$ps_re" = "$go_re" ] && echo IDENTICAL
+IDENTICAL: <div[^>]*>\s*head\s*<b[^>]*>\s*([0-9a-fA-F]{7,40})\s*</b[^>]*>\s*</div[^>]*>
+```
+
+#### 7.4.5 负向（变异验证）
+
+| 变异 | 改法 | 实测结果 |
+| --- | --- | --- |
+| M1 | 指针**缺失**也报故障 | `--- FAIL: TestReadPageNameAbsentUsesDefault` |
+| M2 | 指针存在但为空**不**报故障（GAP-002 复发） | `--- FAIL: TestReadPageNameEmptyIsFault` |
+| M3 | 非 `IsNotExist` 的读错误当「缺失」静默 | `--- FAIL: TestReadPageNameUnreadableIsFault` |
+| M4 | 不 trim（保留尾随换行） | 首轮写法 build failed（`strings` 变未使用）→ 改 `strings.Trim(s, "\r\n")`（**只去换行、不去空格**）后 `--- FAIL: TestReadPageNameReadsTrimmedName` · `…EmptyIsFault` |
+| M5 | Trim 改 Split（两行只取第一行） | `--- FAIL: TestReadPageNameInnerNewlineKept` |
+| M6 | `ReadHead` 未命中仍报 `ok=true` | `--- FAIL: TestReadHead` 下 8 个子用例（含 `span-restructure` 残余格） |
+| M7 | 正则收紧为 `<div>` 不带属性（**GAP-025 已修格复发**） | `--- FAIL: TestReadHead/div-class` · `/div-id` · `/div-and-b-attrs` |
+| M8 | 正则放宽 `\w{7,40}`（容许非 hex） | `--- FAIL: TestReadHead/non-hex` · `TestReadHeadNonHexMarker` |
+
+> M6/M7/M8 三条是**已发布契约的回归护栏**：M7 直接是 GAP-025 修好又被改坏的样子，
+> M8 则会把 `TestReadHeadNonHexMarker`（本次接管的修法）打回原形。
+
+**判据不变量对照（ADR §1.3）**：§1.3.6（HTML 正则同款 + 同款静默）✅ 逐字节一致（§7.4.4）+ `<span>` 残余格保留；
+GAP-002（指针异常不得静默）✅ 由 M2/M3 两格钉住。
+
