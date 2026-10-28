@@ -329,6 +329,59 @@ func Scenarios() []Scenario {
 
 // --- sandbox recipe ---
 
+// prepareRepo turns an empty directory into a DETERMINISTIC git fixture root: a
+// `main`-branch repo with a pinned identity, SHA-1 objects, and signing off.
+//
+// # Why every pin here is load-bearing (qa-validator P2-6)
+//
+// The harness builds TWO sandboxes from the same recipe and then compares the
+// bytes the two guards print. Anything that differs between the two builds —
+// even though the recipe is identical — shows up as a DIFF that says nothing
+// about the port. The timestamps were already pinned (fixtureDate); these were
+// not, and each one was measured to matter (2026-10-28):
+//
+//   - OBJECT FORMAT. `git init --object-format=sha256` (or a host with
+//     `GIT_DEFAULT_HASH=sha256`) yields 64-hex ids and an EIGHT-character
+//     `--short`. Both would be fatal to the comparison, and not symmetrically:
+//     the page regex accepts {7,40} hex and the Go side's fullIDRe accepts
+//     exactly 40, so a sha256 sandbox makes the Go guard fail to resolve ids
+//     that the .ps1 resolves. Measured: `--object-format=sha1` beats
+//     GIT_DEFAULT_HASH=sha256 (exit 0, format sha1), so passing it explicitly is
+//     enough — no need to scrub the environment.
+//   - GPG SIGNING. `commit.gpgsign=true` in the host's global config (or a
+//     required-signing setup) makes `git commit` fail outright: measured exit
+//     128 with a hostile global config, exit 0 once `-c commit.gpgsign=false` is
+//     passed. A machine with signing configured would otherwise report ERROR on
+//     every scenario, for a reason unrelated to the port.
+//   - IDENTITY / BRANCH. Written into the sandbox's OWN .git/config, so it is
+//     already machine-independent; the branch is pinned to `main` so mainline
+//     level 2 is exercised the same way as in production (a host whose
+//     init.defaultBranch is `master` must not change the scenario).
+//
+// NOT pinned, deliberately: `core.abbrev`. Both sides read the same host
+// config, so a host that shortens/extends ids affects BOTH sides identically —
+// it changes the bytes in the report, not the comparison. Pinning it here would
+// test a configuration production does not use.
+func prepareRepo(dir string) error {
+	if err := git(dir, "init", "-q", "--object-format=sha1"); err != nil {
+		return err
+	}
+	for _, kv := range [][2]string{
+		{"user.email", "test@example.com"},
+		{"user.name", "Test"},
+		// Belt and braces with the -c flags in git(): a scenario that calls
+		// `git` through something other than this package's helper still gets a
+		// signing-free repo.
+		{"commit.gpgsign", "false"},
+		{"gpg.format", "openpgp"},
+	} {
+		if err := git(dir, "config", kv[0], kv[1]); err != nil {
+			return err
+		}
+	}
+	return git(dir, "symbolic-ref", "HEAD", "refs/heads/main")
+}
+
 // initRepoNoCommit creates <dir>/.claude + a git repo with NO commit, on `main`.
 // The branch is pinned so level 2 of the mainline resolution is exercised the
 // same way it is in production (this machine's init.defaultBranch is `master`).
@@ -339,19 +392,7 @@ func initRepoNoCommit(dir string) error {
 	if err := os.WriteFile(filepath.Join(dir, ".claude", "progress-page.txt"), []byte("project-progress.html\n"), 0o644); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	if err := git(dir, "init", "-q"); err != nil {
-		return err
-	}
-	if err := git(dir, "config", "user.email", "test@example.com"); err != nil {
-		return err
-	}
-	if err := git(dir, "config", "user.name", "Test"); err != nil {
-		return err
-	}
-	return git(dir, "symbolic-ref", "HEAD", "refs/heads/main")
+	return prepareRepo(dir)
 }
 
 // initRepoOnMain is initRepoNoCommit plus one commit.
@@ -376,8 +417,13 @@ func initRepoOnMain(dir string) error {
 // comparison cannot do that, so the determinism has to be built in.)
 const fixtureDate = "2000-01-01T00:00:00+0000"
 
+// signingOff are passed to EVERY fixture git invocation, so no call site can
+// forget them (see prepareRepo for why signing must be off).
+var signingOff = []string{"-c", "commit.gpgsign=false", "-c", "gpg.format=openpgp"}
+
 func git(dir string, args ...string) error {
-	c := exec.Command("git", args...)
+	full := append(append([]string{}, signingOff...), args...)
+	c := exec.Command("git", full...)
 	c.Dir = dir
 	c.Env = append(os.Environ(),
 		"GIT_AUTHOR_DATE="+fixtureDate,

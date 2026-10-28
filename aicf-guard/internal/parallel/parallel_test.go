@@ -2,6 +2,7 @@ package parallel
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -330,6 +331,88 @@ func TestScenariosHaveUniqueNamesAndExpectations(t *testing.T) {
 			t.Errorf("scenario %q has no Make", sc.Name)
 		}
 	}
+}
+
+// TestFixtureSurvivesHostileHostGitConfig is qa-validator P2-6.
+//
+// The harness builds two sandboxes from one recipe and compares bytes. If the
+// recipe's output depends on the HOST's git configuration, the two builds can
+// differ for reasons that say nothing about the port — a "DIFF" that is pure
+// noise, or (worse) a scenario that never runs. Two host settings were measured
+// to do exactly that (2026-10-28):
+//
+//   - commit.gpgsign=true in the global config: `git commit` exits 128, so every
+//     scenario becomes ERROR;
+//   - GIT_DEFAULT_HASH=sha256 (or init.defaultObjectFormat): ids become 64-hex
+//     and `--short` yields EIGHT characters, which the page regex ({7,40}) and
+//     the Go side's 40-hex fullIDRe were never designed for — the two sides
+//     would then disagree about whether an id even resolves.
+//
+// This test sets both, then asserts the fixture comes out sha1 / 7-char / 40-char
+// anyway. It is a test of the RECIPE (initRepoOnMain), not of git, so it fails
+// the moment someone drops the `--object-format` pin or the `-c` flags.
+func TestFixtureSurvivesHostileHostGitConfig(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the hostile config names /bin/false as the signing program")
+	}
+	hostile := filepath.Join(t.TempDir(), "hostile.gitconfig")
+	body := "[commit]\n\tgpgsign = true\n[gpg]\n\tprogram = /bin/false\n[user]\n\tsigningkey = DEADBEEF\n"
+	if err := os.WriteFile(hostile, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_CONFIG_GLOBAL", hostile)
+	t.Setenv("GIT_DEFAULT_HASH", "sha256")
+
+	dir := t.TempDir()
+	if err := initRepoOnMain(dir); err != nil {
+		t.Fatalf("fixture must survive a hostile host git config: %v", err)
+	}
+
+	if got := strings.TrimSpace(fixtureGit(t, dir, "rev-parse", "--show-object-format")); got != "sha1" {
+		t.Errorf("object format=%q want sha1 (sha256 gives 8-char short ids and 64-hex ids)", got)
+	}
+	full := strings.TrimSpace(fixtureGit(t, dir, "rev-parse", "HEAD"))
+	if len(full) != 40 {
+		t.Errorf("full id %q has len %d want 40 (sha/id the guard's regexes assume)", full, len(full))
+	}
+	short, err := shortHead(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(short) != 7 {
+		t.Errorf("short id %q has len %d want 7", short, len(short))
+	}
+}
+
+// TestFixtureCommitsAreDeterministic pins the reason the dates are fixed: the
+// same recipe must produce the SAME id twice, or the two sandboxes cannot be
+// compared byte for byte (the reason string embeds the short id).
+func TestFixtureCommitsAreDeterministic(t *testing.T) {
+	a, b := t.TempDir(), t.TempDir()
+	for _, d := range []string{a, b} {
+		if err := initRepoOnMain(d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ha := strings.TrimSpace(fixtureGit(t, a, "rev-parse", "HEAD"))
+	hb := strings.TrimSpace(fixtureGit(t, b, "rev-parse", "HEAD"))
+	if ha != hb {
+		t.Errorf("same recipe produced different ids:\n  a=%s\n  b=%s", ha, hb)
+	}
+}
+
+// fixtureGit runs a read-only git command in a fixture repo, WITHOUT the signing
+// overrides — reading does not sign, and going through the plain command keeps
+// this helper independent of the code under test.
+func fixtureGit(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	c := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	c.Env = append(os.Environ(), "GIT_AUTHOR_DATE="+fixtureDate, "GIT_COMMITTER_DATE="+fixtureDate)
+	out, err := c.Output()
+	if err != nil {
+		t.Fatalf("git %v in %s: %v", args, dir, err)
+	}
+	return string(out)
 }
 
 // --- helpers ---
