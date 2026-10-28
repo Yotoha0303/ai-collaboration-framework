@@ -18,7 +18,26 @@
 /.env.local
 /.env.*.local
 
+# 并行子代理协作草稿（ADR-002 §2.5 / AGENTS.md §4.4）：运行态，不是交付物。
+# 规则带前导 `/`（锚定仓根），理由同 /memory.md：不带 `/` 会连任意层级的 `.collab/` 一并忽略。
+# 与 §9.1「本机排除规则不得携带」不矛盾——该条针对的是**个人**条目（某个业务仓目录名），
+# 而 `.collab/` 是**框架机制**（每个采用方都会用），判据是「它从框架来，还是从上一个项目来」。
+/.collab/
+
 # 分工说明：本机的外部项目目录 project/ 刻意【不】写在这里——
 # 别人的 fork 里未必有它，写进来就成了"指不到东西的引用"。
 # 它只由本机的 .git/info/exclude 排除，不随仓库分发。
 # 本文件只随仓库分发"运行态"这一条规则：交付物与框架源必须照常入库。
+
+# aicf-guard 二进制与构建产物（不入库；源码 aicf-guard/ 入库）—— ADR-001 §6.8 R10。
+# 规则带前导 `/`（锚定仓根），与上方 /memory.md / /record.md 同口径：不带 `/` ⇒
+# 任意层级同名文件全忽略（AGENTS.md §0.0 实测过的坑）。
+# 判据（ADR §6.8）：本地 go build 后 `git status --porcelain` 不得出现二进制路径；
+# `git ls-files aicf-guard/` 列源码、不列 bin/。
+# 构建产物目录（`go build -o bin/…`）与二进制直接落源码目录的兜底（裸 `go build ./…`
+# 在 main 包目录留下 aicf-guard 二进制）+ hooks 部署位置（ADR §6.8 R10 指定）。
+/aicf-guard/bin/
+/aicf-guard/aicf-guard
+/aicf-guard/aicf-guard.exe
+/.claude/hooks/aicf-guard
+/.claude/hooks/aicf-guard.exe
