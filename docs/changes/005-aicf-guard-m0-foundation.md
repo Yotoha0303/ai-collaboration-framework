@@ -55,62 +55,86 @@
 
 ## 三、准出清单（M0 地基，落地后逐条回填实测）
 
+> **回填口径**：下表「实测」列取自 `2026-10-28` 本机实跑（`go1.27.3` · `git 2.56.0` · Linux）。
+> 第 1/2 次派发**共用这一张表**（同一个 M0）；第 2 次派发新增的 5 个单元见 §四之二与 §七。
+
 ### 3.1 module 骨架 + `--version`
 
 | # | 判据 | 命令 | 预期 | 实测 |
 | --- | --- | --- | --- | --- |
-| 1 | module 编过 | `cd aicf-guard && go build ./...` | exit 0 | 待回填 |
-| 2 | 默认 `--version`（未注入） | `cd aicf-guard && go build -o /tmp/ag . && /tmp/ag --version` | `aicf-guard dev (unknown)` + exit 0 | 待回填 |
-| 3 | 注入 `--version` | `cd aicf-guard && go build -ldflags "-X main.version=v0.1.0 -X main.commit=test1234" -o /tmp/ag . && /tmp/ag --version` | `aicf-guard v0.1.0 (test1234)` + exit 0 | 待回填 |
-| 4 | 无参数 | `/tmp/ag` | exit 2 + usage on stderr | 待回填 |
-| 5 | 未知子命令 | `/tmp/ag bogus` | exit 2 + stderr | 待回填 |
-| 6 | 占位子命令 | `/tmp/ag progress` | exit 1 + stderr（not implemented） | 待回填 |
-| 7 | `go.mod` 最低版本 | `head -1 aicf-guard/go.mod` | `go 1.21`（实测抬高了则记） | 待回填 |
+| 1 | module 编过 | `cd aicf-guard && go build ./...` | exit 0 | ✅ **exit 0** |
+| 2 | 默认 `--version`（未注入） | `cd aicf-guard && go build -o /tmp/ag . && /tmp/ag --version` | `aicf-guard dev (unknown)` + exit 0 | ✅ `aicf-guard dev (unknown)` · exit 0 |
+| 3 | 注入 `--version` | `cd aicf-guard && go build -ldflags "-X main.version=v0.1.0 -X main.commit=test1234" -o /tmp/ag . && /tmp/ag --version` | `aicf-guard v0.1.0 (test1234)` + exit 0 | ✅ `aicf-guard v0.1.0 (test1234)` · exit 0 |
+| 4 | 无参数 | `/tmp/ag` | exit 2 + usage on stderr | ✅ exit 2 · stdout 0B · stderr 539B |
+| 5 | 未知子命令 | `/tmp/ag bogus` | exit 2 + stderr | ✅ exit 2 · stdout 0B · stderr 578B |
+| 6 | 占位子命令 | `/tmp/ag numbers` | exit 1 + stderr（not implemented） | ✅ exit 1 · stderr `aicf-guard: "numbers" not implemented yet (see ADR-001 §3 for the milestone)`。**注**：原表写的是 `progress`——它在第 2 次派发已实现，占位集缩为 `numbers`/`inject`/`adapter`/`selftest`/`doctor`（`progress` 的接线另有专测：`TestProgressSubcommandBelow`） |
+| 7 | `go.mod` 最低版本 | `grep '^go ' aicf-guard/go.mod` | `go 1.21`（实测抬高了则记） | ✅ `go 1.21`（**未抬高**；用到的 API 均 ≤1.21，用 go1.27.3 编译通过） |
 
 ### 3.2 共享库 6 件单测（含负向，D3）
 
 | # | 包 | 关键用例（正向 + 负向） | 命令 | 预期 | 实测 |
 | --- | --- | --- | --- | --- | --- |
-| 8 | `internal/git` | `Probe()` true · `Canary()` true · `Checked` exit=0 / exit≠0 · **`GIT_DIR`+`GIT_OBJECT_DIRECTORY` 劫持不被劫持（GAP-013①/GAP-031）** · `filterGitFamily` 9 个全滤 | `go test -race ./internal/git/` | PASS | 待回填 |
-| 9 | `internal/workspace` | 旗标覆盖 · 旗标无效 · `CLAUDE_PROJECT_DIR` · exe 回推 · CWD 回退 · 优先级（旗标>CPD>exe>cwd）· repo `@[ws,ws/project]` ws 优先 · 无 repo | `go test -race ./internal/workspace/` | PASS | 待回填 |
-| 10 | `internal/mainline` | **三级回退各分支**：origin/HEAD 命中 / main 兜底 / HEAD 兜底（Name 点名）/ unborn 全不中 | `go test -race ./internal/mainline/` | PASS | 待回填 |
-| 11 | `internal/sha` | 短前缀+full id 一致 · **真前缀+假后缀（40 位）不一致（GAP-008）** · 不存在的 SHA ⇒ false · 大小写 | `go test -race ./internal/sha/` | PASS | 待回填 |
-| 12 | `internal/page` | 无属性 / `b[class]` / `b[style]` / `div[class]` / 两侧空白 · **缺页/无标记 ⇒ 同款静默** · `<span>` 重构 ⇒ 静默（GAP-025 残余）· 7 位下界 / 6 位不匹配 | `go test -race ./internal/page/` | PASS | 待回填 |
+| 8 | `internal/git` | `Probe()` true · `Canary()` true · `Checked` exit=0 / exit≠0 · **`GIT_DIR`+`GIT_OBJECT_DIRECTORY` 劫持不被劫持（GAP-013①/GAP-031）** · `filterGitFamily` 9 个全滤 | `go test -race ./internal/git/` | PASS | ✅ `ok aicf-guard/internal/git 1.092s` |
+| 9 | `internal/workspace` | 旗标覆盖 · 旗标无效 · `CLAUDE_PROJECT_DIR` · exe 回推 · CWD 回退 · 优先级（旗标>CPD>exe>cwd）· repo `@[ws,ws/project]` ws 优先 · 无 repo | `go test -race ./internal/workspace/` | PASS | ✅ `ok 1.063s`（34 格；第 2 次派发新增 `ResolveFrom`/`FindPage` 10 格，见 §7.3） |
+| 10 | `internal/mainline` | **三级回退各分支**：origin/HEAD 命中 / main 兜底 / HEAD 兜底（Name 点名）/ unborn 全不中 | `go test -race ./internal/mainline/` | PASS | ✅ `ok 1.151s`（7 格；新增「级 1 目标非 commit」格，见 §7.2） |
+| 11 | `internal/sha` | 短前缀+full id 一致 · **真前缀+假后缀（40 位）不一致（GAP-008）** · 不存在的 SHA ⇒ false · 大小写 | `go test -race ./internal/sha/` | PASS | ✅ `ok 1.388s`（18 个顶层用例；新增 `ResolveFull`/`EqualFull`，见 §7.1） |
+| 12 | `internal/page` | 无属性 / `b[class]` / `b[style]` / `div[class]` / 两侧空白 · **缺页/无标记 ⇒ 同款静默** · `<span>` 重构 ⇒ 静默（GAP-025 残余）· 7 位下界 / 6 位不匹配 | `go test -race ./internal/page/` | PASS | ✅ `ok 1.017s`（11 个顶层用例；新增 `ReadPageName` 与畸形首标记格，见 §7.4） |
+
+> 第 2 次派发另增两个包（不在原表 6 件内）：`internal/progress`（`ok 1.280s`，32 格）·
+> `internal/parallel`（`ok 1.646s`，11 格）。合计 **7 个包全 ok**（`go test -race ./...`）。
 
 ### 3.3 判据不变量（ADR §1.3，不得破坏）
 
 | # | 不变量 | 验证方式 | 实测 |
 | --- | --- | --- | --- |
-| 13 | **THE ONE RULE**：git 调用判据是退出码 | 全仓 grep `\.Exit` —— 仅 `internal/git` 包内 + 各调用方判 `.Exit == 0`/`!= 0`，无第二处读 git exit code | 待回填 |
-| 14 | 负向金丝雀 | `Canary()` 单测：`git rev-parse --verify 0000…^{commit}` exit≠0 | 待回填 |
-| 15 | `GIT_*` 族（9 个）清空 | `filterGitFamily` 单测：9 个全滤；`Checked` 集成：注入 `GIT_DIR`+`GIT_OBJECT_DIRECTORY` ⇒ 不被劫持 | 待回填 |
-| 16 | 主干三级回退 reason 点名 | `mainline` 单测：HEAD 兜底 Name = `HEAD（未找到主干）` | 待回填 |
-| 17 | SHA 双侧归一 full id 再比 | `sha` 单测：真前缀+假后缀（40 位）⇒ false | 待回填 |
-| 18 | HTML 正则同款 | `page` 单测：正则与 `check-progress.ps1:375` 逐字一致（`<span>` 仍静默） | 待回填 |
+| 13 | **THE ONE RULE**：git 调用判据是退出码 | 全仓 grep `git.Checked(` —— 除 `internal/git` 自身外，**7 处调用点**全在 3 个共享库（workspace 1 · mainline 5 · sha 1），`internal/progress` **零调用**（只经共享库） | ✅ 7 处，见下 |
+| 14 | 负向金丝雀 | `Canary()` 单测：`git rev-parse --verify 0000…^{commit}` exit≠0 | ✅ `TestCanary` PASS；`progress` 侧另有 `TestRunP5CanaryUntrustworthy` + 沙箱 `CanaryNotice`（真 shim） |
+| 15 | `GIT_*` 族（9 个）清空 | `filterGitFamily` 单测：9 个全滤；`Checked` 集成：注入 `GIT_DIR`+`GIT_OBJECT_DIRECTORY` ⇒ 不被劫持 | ✅ `grep -c '"GIT_' internal/git/git.go` ⇒ **9**；`TestCheckedFiltersGitEnvFamily` PASS；沙箱 `A9/A10 GIT_DIR 注入他仓` 场景 |
+| 16 | 主干三级回退 reason 点名 | `mainline` 单测：HEAD 兜底 Name = `HEAD（未找到主干）` | ✅ `TestResolveHEADFallback` PASS；`progress` 侧 M8 变异（写死"当前 HEAD"）**4 格 FAIL** |
+| 17 | SHA 双侧归一 full id 再比 | `sha` 单测：真前缀+假后缀（40 位）⇒ false | ✅ `TestCompareFakeSuffix` PASS；`TestEqualFull/same-7-prefix` 亦 PASS |
+| 18 | HTML 正则同款 | `page` 单测：正则与 `check-progress.ps1:375` 逐字一致（`<span>` 仍静默） | ✅ **逐字节相等**（§7.4.4 的 `[ "$ps_re" = "$go_re" ]` ⇒ `IDENTICAL`）；`TestReadHead/span-restructure` 断言静默 |
+
+`git.Checked(` 的 7 处调用点（`grep -rn 'git.Checked(' --include=*.go . | grep -v _test.go | grep -v internal/git/`）：
+
+```
+internal/workspace/workspace.go:188   rev-parse --git-dir
+internal/mainline/mainline.go:52      symbolic-ref refs/remotes/origin/HEAD
+internal/mainline/mainline.go:55      rev-parse --verify <origin/HEAD>^{commit}
+internal/mainline/mainline.go:60      rev-parse --verify refs/heads/main^{commit}
+internal/mainline/mainline.go:65      rev-parse --verify HEAD^{commit}
+internal/mainline/mainline.go:90      rev-parse --short <ref>
+internal/sha/sha.go:74                rev-parse --verify <id>^{commit}
+```
+
+> **一处如实标注**：`internal/parallel/scenarios.go` 里也有 `exec.Command("git")`——那是**造沙箱**（`init`/
+> `commit`/`symbolic-ref`/`update-ref`），**不是**守卫的判据路径，且每次调用都核对错误（`git()` helper 返回 error）。
+> 它不受 THE ONE RULE 约束（那条规则管"判定",不管"造数据"），但**读数是 `exec.Command` 而非 `git.Checked`**，
+> 故在此写明，免得 `grep` 的人以为有第二处判据实现。
 
 ### 3.4 `.gitignore` 同步（ADR §6.8 R10）
 
 | # | 判据 | 命令 | 预期 | 实测 |
 | --- | --- | --- | --- | --- |
-| 19 | 排除规则就位 | `grep -n aicf-guard .gitignore` | 3 行（`/aicf-guard/bin/` · `/.claude/hooks/aicf-guard` · `/.claude/hooks/aicf-guard.exe`）+ 注释 | 待回填 |
-| 20 | 源码入库 | `git ls-files aicf-guard/` | `go.mod`/`main.go`/`main_test.go`/子包源码（**不**含 `bin/`） | 待回填 |
-| 21 | 本地 build 后无残留 | `go build -o .claude/hooks/aicf-guard ./aicf-guard/ && git status --porcelain` | 无 `.claude/hooks/aicf-guard`（被忽略） | 待回填 |
+| 19 | 排除规则就位 | `grep -n aicf-guard .gitignore` | 3 行（`/aicf-guard/bin/` · `/.claude/hooks/aicf-guard` · `/.claude/hooks/aicf-guard.exe`）+ 注释 | ✅ **5 条**（比原计划多 2 条：`/aicf-guard/aicf-guard` 与 `/aicf-guard/aicf-guard.exe`——裸 `go build ./...` 会在 main 包目录留下同名二进制，原计划漏了这一形态）。行号 33–37 |
+| 20 | 源码入库 | `git ls-files aicf-guard/` | `go.mod`/`main.go`/`main_test.go`/子包源码（**不**含 `bin/`） | ✅ **19 个文件**：`go.mod` · `main.go` · `main_test.go` · 7 个子包各 `*.go`(+`_test.go`) · `tools/parallel/main.go`。**不含** `bin/`、不含二进制 |
+| 21 | 本地 build 后无残留 | `go build -C aicf-guard -o ../.claude/hooks/aicf-guard . && git status --porcelain` | 无 `.claude/hooks/aicf-guard`（被忽略） | ✅ 实测 `git status --porcelain` 只列出手改的两个 `.ps1`，**二进制不出现**；`git check-ignore -v` 命中 `.gitignore:36` |
 
 ---
 
 ## 四、负向证伪检验（§3 第 4 段，D3）
 
 > 本单元的负向用例**已在 §三 的单测里逐条具名**（上表「负向」列）。此处归纳「注入什么故障能让判据静默通过」——每条都对应一个测试。
+> **第 2 次派发追加的部分见 §四之二；「变异是否真被杀」的实测读数见 §七各节。**
 
-| 证伪点 | 注入什么 | 必须的表现 | 对应测试 |
-| --- | --- | --- | --- |
-| `GIT_DIR` 劫持（GAP-013①） | `GIT_DIR=<他仓>` + `GIT_OBJECT_DIRECTORY=<他仓>` 后调 `Checked("-C", B, ...)` | 读数是 B 不是他仓（exit 0 且 Text=B 的 HEAD） | `TestCheckedFiltersGitEnvFamily` |
-| 金丝雀失效（ADR §1.3.2） | `git rev-parse --verify 0000…^{commit}` | exit≠0（`Canary()` 返回 true=可信） | `TestCanary` |
-| SHA 前缀比对（GAP-008） | 真前缀 `8e744cd` + 假后缀（40 位）vs 真 full id | `Compare` 返回 **false**（不因前缀相同而判一致） | `TestCompareFakeSuffix` |
-| HTML 正则盲区（GAP-025 残余） | `<span>head <b>deadbeef</b></span>` | `ReadHead` 返回 `("", false)`（**静默**——残余不修，A5 格钉住） | `TestReadHead/span-restructure` |
-| 缺页 / 无标记 | 不存在的文件 / 无标记的 HTML | `ReadHead` 返回 `("", false)`（同款静默） | `TestReadHeadMissingFile` / `no-marker` |
-| 主干三级全不中 | unborn repo（无 commit） | `Resolve` 返回 `Ok=false` | `TestResolveUnborn` |
-| `--version` 默认值 | 不注入 ldflags 直接 build | `aicf-guard dev (unknown)`（不是空 / 不是崩） | `TestVersion` |
+| 证伪点 | 注入什么 | 必须的表现 | 对应测试 | 实测 |
+| --- | --- | --- | --- | --- |
+| `GIT_DIR` 劫持（GAP-013①） | `GIT_DIR=<他仓>` + `GIT_OBJECT_DIRECTORY=<他仓>` 后调 `Checked("-C", B, ...)` | 读数是 B 不是他仓（exit 0 且 Text=B 的 HEAD） | `TestCheckedFiltersGitEnvFamily` | ✅ PASS |
+| 金丝雀失效（ADR §1.3.2） | `git rev-parse --verify 0000…^{commit}` | exit≠0（`Canary()` 返回 true=可信） | `TestCanary` | ✅ PASS |
+| SHA 前缀比对（GAP-008） | 真前缀 + 假后缀（40 位）vs 真 full id | `Compare` 返回 **false**（不因前缀相同而判一致） | `TestCompareFakeSuffix` | ✅ PASS（另 `TestEqualFull/same-7-prefix` 钉住 full-id 路径） |
+| HTML 正则盲区（GAP-025 残余） | `<span>head <b>deadbeef</b></span>` | `ReadHead` 返回 `("", false)`（**静默**——残余不修，A5 格钉住） | `TestReadHead/span-restructure` | ✅ PASS（沙箱 `A5` 场景同样断言静默） |
+| 缺页 / 无标记 | 不存在的文件 / 无标记的 HTML | `ReadHead` 返回 `("", false)`（同款静默） | `TestReadHeadMissingFile` / `no-marker` | ✅ PASS |
+| 主干三级全不中 | unborn repo（无 commit） | `Resolve` 返回 `Ok=false` | `TestResolveUnborn` | ✅ PASS（`progress` 侧 `TestRunP7MainlineUnresolvedIsHonoured`） |
+| `--version` 默认值 | 不注入 ldflags 直接 build | `aicf-guard dev (unknown)`（不是空 / 不是崩） | `TestVersionDefault` | ✅ PASS。**注**：原表写的 `TestVersion` **不存在**（实际名 `TestVersionDefault`）——已按实测更正 |
 
 ---
 
@@ -179,20 +203,45 @@
 
 | 编号 | 状态 | 说明 |
 | --- | --- | --- |
-| `GAP-025`② | 已缓解·残余 | HTML 正则残余（`<span>` 重构静默）**本单元不修**——保留同款正则与同款静默（ADR §1.3.6）。`page` 单测的 `<span>` 用例钉住残余。 |
-| `GAP-029` | 已实现·待复核 | 布局无关枚举（`files.Enum`）**不在本单元**（M3）。本单元 `workspace.Resolve` 不涉及该路径。 |
-| `GAP-031` | 已实现·待复核 | 主干三级回退——本单元 `mainline.Resolve` 重写同款逻辑，单测覆盖三级。**独立复核由 `falsifier` 在三跳链做**。 |
-| ADR §8.3 待登记 | 待登记（M0） | 「薄转发层在二进制缺失时的 fail-closed 契约」——**第 2 次派发实现转发层时登记**（本单元不做转发层）。 |
+| `GAP-025`② | 已缓解·残余 | HTML 正则残余（`<span>` 重构静默）**不修**——保留同款正则与同款静默（ADR §1.3.6）。`page` 单测的 `<span>` 用例与沙箱 `A5` 场景钉住残余。 |
+| `GAP-029` | 已实现·待复核 | 布局无关枚举（`files.Enum`）**不在 M0**（M3）。`workspace.Resolve` 不涉及该路径。 |
+| `GAP-031` | 已实现·待复核 | 主干三级回退——`mainline.Resolve` 重写同款逻辑，单测覆盖三级 + 级 1 非 commit 格；`progress` 侧沙箱 `A12`/`A13` 复现「分支 vs 主干」。**独立复核由 `falsifier` 在三跳链做**。 |
+| ADR §8.3 待登记① | **已实现，编号待总控登记** | 「薄转发层在二进制缺失时的 fail-closed 契约」——U7 已实现（`exit 1` + stderr，静态核对见 §7.7）。ADR §8.3 原文要求「M0 实现时若发现某子命令的『二进制缺失』无法与原『git 不可用』分支同形，登记为独立缺口」——**发现了一处**：在 Antigravity 侧该分支会被 `stop-adapter.ps1:54-59` 降级为非阻断，见 §7.7 的「交给门禁的残余」。 |
+| **新增（待总控编号）** | **阻塞对拍准出** | **本机无 PowerShell 运行时**（`pwsh`/`powershell` 均缺），M0 的对拍准出**无法在本机达成**。装置已就绪（§7.6），复跑命令已给出（§7.6.4）。这**不是**"不适用"，是「判据存在但运行时缺失」——按 `AGENTS.md` §2 该环**未满足**。 |
+| **新增（待总控编号）** | **待裁定** | Antigravity 侧「二进制缺失 = 非阻断」的残余（§7.7）。候选处置与后果已列出，属**契约变更**，不在实现方权限内。 |
 
 ### 5.3 不自证（D3 + 角色硬边界）
 
-本单元的测试**不能自己放行**。本地验证（`go build`/`go test -race`/`--version`）必须做，但 **M0 准出由总控三跳链判定**（`qa-validator`→`falsifier`→`gate-auditor`，§4.2），在第 2 次派发完成 M0 整体后触发。本单元交付「实现 + 本地验证证据」，**非准出裁决**。
+本次（两次派发合计）的测试**不能自己放行**。本地验证（`go build`/`go vet`/`go test -race`/真二进制沙箱跑）
+必须做且已做，但 **M0 准出由总控三跳链判定**（`qa-validator`→`falsifier`→`gate-auditor`，§4.2）。
+本文交付「实现 + 本地验证证据 + 变异读数」，**非准出裁决**。
+
+**其中两条必须在三跳链里被特别看**（实现方标记，不作结论）：
+1. **对拍未验证**（§7.6）——ADR §6.1 把它列为**硬判据**。判据未满足时，「Go 版与 .ps1 等价」这句话**没有证据**。
+2. **转发层未经实机运行**（§7.7）——本机无 PowerShell，`check-progress.ps1` 的正确性目前只有静态核对。
 
 ---
 
 ## 六、回填（改动落地后，`go build`/`go test -race`/`--version` 实测）
 
-> 待回填——见文末「七、回填记录」。
+> 表 3.1–3.4 的「实测」列**已全部回填**（见 §三各行 ✅ 与读数）。逐单元的过程记录见「七、回填记录」。
+
+**M0 整体读数（`2026-10-28`，本机）**
+
+```
+$ cd aicf-guard && gofmt -l . ; go vet ./...
+（无输出）
+$ go test -race -count=1 ./...
+ok  	aicf-guard	1.038s
+ok  	aicf-guard/internal/git	1.103s
+ok  	aicf-guard/internal/mainline	1.160s
+ok  	aicf-guard/internal/page	1.039s
+ok  	aicf-guard/internal/parallel	1.646s
+ok  	aicf-guard/internal/progress	1.280s
+ok  	aicf-guard/internal/sha	1.370s
+ok  	aicf-guard/internal/workspace	1.080s
+?   	aicf-guard/tools/parallel	[no test files]
+```
 
 ---
 
@@ -255,7 +304,7 @@ $ go test -count=1 -v ./internal/sha/ | grep -c '^--- PASS'
 | 340 | 三级全不中 ⇒ `exit 0`（静默） | 返回 `Result{Ok:false}`，**由调用方**决定静默 | ✅（决策点留在调用方，符合 `.ps1` 的分支结构） |
 | — | （`.ps1` 无此分支） | `repo == ""` ⇒ 直接 `Ok:false` | 防御性新增，**不改变可观测行为**（`workspace.Resolve` 不会返回空 repo） |
 
-**改了什么**：`mainline.go` **无改动**（核对后确认与 `.ps1` 一致，不做"为改而改"）；`mainline_test.go` 补
+**改了什么**：`aicf-guard/internal/mainline/mainline.go` **无改动**（核对后确认与 `.ps1` 一致，不做"为改而改"）；`aicf-guard/internal/mainline/mainline_test.go` 补
 `TestResolveOriginHeadNonCommitFallsToMain`。**为什么补**：原有 3 条级 1 用例里，「dangling ref」在**查 ref 那一步**
 就失败了，**从未走到 `^{commit}` peel**——于是"级 1 去掉 `^{commit}`"这个变异（M2）原本**无格可杀**。这是
 ADR §1.3.4「`symbolic-ref` 不够，须再过一次 `rev-parse --verify`」在**对象类型**维度上的补格。
@@ -297,8 +346,8 @@ ok  	aicf-guard/internal/mainline	1.159s
 
 | 文件 | 改动 |
 | --- | --- |
-| `workspace.go` | ① 新增 `ResolveFrom(flagWorkspace, projectDir, executable, workingDir)`——把 OS 派生的四个输入显式化；`Resolve` 改为读 OS 后**委托**给它（**只有一条实现**，`os.Executable`/`os.Getwd`/`os.Getenv` 在测试里不可注入，不抽出来则分层逻辑只能靠"测试二进制恰好放在哪"来测）。② 删除原 `resolveWorkspace`（其职责并入 `Resolve`）。③ 新增 `FindPage(ws, name)`：两处候选 `.ps1:212-215`，**ws 优先**，命中即停。 |
-| `workspace_test.go` | 补 `ResolveFrom` 3 格 + `TestResolveUsesProjectDir`（唯一触碰 OS 管线的一格）+ `FindPage` 6 格。 |
+| `aicf-guard/internal/workspace/workspace.go` | ① 新增 `ResolveFrom(flagWorkspace, projectDir, executable, workingDir)`——把 OS 派生的四个输入显式化；`Resolve` 改为读 OS 后**委托**给它（**只有一条实现**，`os.Executable`/`os.Getwd`/`os.Getenv` 在测试里不可注入，不抽出来则分层逻辑只能靠"测试二进制恰好放在哪"来测）。② 删除原 `resolveWorkspace`（其职责并入 `Resolve`）。③ 新增 `FindPage(ws, name)`：两处候选 `.ps1:212-215`，**ws 优先**，命中即停。 |
+| `aicf-guard/internal/workspace/workspace_test.go` | 补 `ResolveFrom` 3 格 + `TestResolveUsesProjectDir`（唯一触碰 OS 管线的一格）+ `FindPage` 6 格。 |
 
 **⚠️ 与 `.ps1` 的一处刻意差异（如实记，不藏）**
 
@@ -375,8 +424,8 @@ GAP-009（`.git` 存在 ≠ 是仓）✅ 由 M3 那格钉住；`.ps1:275-279`「
 
 | 文件 | 改动 |
 | --- | --- |
-| `page.go` | 新增 `DefaultPageName` 常量与 `ReadPageName(pointerPath) NameResult`——指针文件的**三态**（`.ps1:199-206`）：缺失⇒默认名且**不报故障**；有名字⇒trim 后返回；**有但读不出⇒报故障**（GAP-002）。补注释说明 M8/M9 的语义。 |
-| `page_test.go` | 补 `TestReadHeadSkipsMalformedFirstMarker`（3 子格）+ `ReadPageName` 5 格。 |
+| `aicf-guard/internal/page/page.go` | 新增 `DefaultPageName` 常量与 `ReadPageName(pointerPath) NameResult`——指针文件的**三态**（`.ps1:199-206`）：缺失⇒默认名且**不报故障**；有名字⇒trim 后返回；**有但读不出⇒报故障**（GAP-002）。补注释说明 M8/M9 的语义。 |
+| `aicf-guard/internal/page/page_test.go` | 补 `TestReadHeadSkipsMalformedFirstMarker`（3 子格）+ `ReadPageName` 5 格。 |
 
 **新发现（本次实测，值得钉住）**：正则命中「第一个**格式正确**的标记」，**不是**「第一个标记」。
 畸形首标记（`<b></b>` / `<b>()</b>` / `<b>abc</b>`）根本不可匹配，引擎会**跳过它**取第二个。
@@ -688,7 +737,7 @@ cp .claude/hooks/check-progress.legacy.ps1 /tmp/check-progress.ps1           # �
 2. **不改 `self-test.ps1`** —— 它的 A 组现在指向**转发层**，在**有二进制**的机器上行为不变（转发层透传），
    在**无二进制**的机器上会走 `exit 1` notice（A1/A4/A8/A10/A12/A13 会 FAIL，A2/A3/A5/A7 仍 PASS）。
    **这是既有格子的预期变化**，应由下一轮在有 PowerShell 的机器上实测后裁决，不在本次"顺手改尺子"（D3：实现方不自审判据）。
-3. **`README.md` / `hooks/README.md` 的描述未改** —— 它们描述的是**规则**（权威源在 `AGENTS.md` §5），
+3. **`README.md` / `.claude/hooks/README.md` 的描述未改** —— 它们描述的是**规则**（权威源在 `AGENTS.md` §5），
    而 §5 未变。转发层是**实现细节**，已在文件头写明。
 
 **⚠️ 交给门禁的残余（本单元发现，**不自行拍板**）**
@@ -708,3 +757,55 @@ ADR §3 规定「二进制缺失 ⇒ 按原『git 不可用』分支处置（`ex
 **判据不变量对照（ADR §3 薄转发层契约）**：fail-closed ✅（静态核对第 1、2 行）；不静默 ✅；
 守卫逻辑唯一实现 ✅（D4）；**"二进制缺失"这一格的实机验证 = 未做**（无 PowerShell）。
 
+
+---
+
+## 八、M0 收尾：提交序列与判据状态（**非准出裁决**）
+
+### 8.1 提交序列（`8e744cd` = M0 起点，ADR Accepted 后的 merge 提交）
+
+| # | 提交 | 单元 | 核心内容 |
+| --- | --- | --- | --- |
+| 1 | `0cbfd7f` | 1/2 地基 | `go.mod`（`go 1.21`，零外部依赖）· `main.go` + `--version` · `.gitignore` |
+| 2 | `918eb68` | 1/2 地基 | `internal/git`：`Checked`/`Probe`/`Canary`（THE ONE RULE） |
+| 3 | `87abad3` | U1 | `internal/sha`：`ResolveFull`/`EqualFull`/`Compare` |
+| 4 | `cb3f225` | U2 | `internal/mainline`：三级回退 + `ShortRef`；补「级 1 非 commit」格 |
+| 5 | `ea55806` | U3 | `internal/workspace`：`ResolveFrom` + `FindPage` |
+| 6 | `229c11d` | U4 | `internal/page`：复核 `first1/second2` 修法 + `ReadPageName` |
+| 7 | `eecc81f` | U5 | `internal/progress`：11 个分支 |
+| 8 | `805c942` | U6 | `internal/parallel` + `tools/parallel`：对拍 harness |
+| 9 | `0943e49` | U7 | `check-progress.ps1` → 薄转发层 + `check-progress.legacy.ps1` |
+
+每个提交单独 `go vet ./... && go test -race ./...` 全绿；每单元一次变异验证（共 **6+6+7+8+12** 条实现变异 +
+harness 自身 11 格），读数分别在 §7.1–§7.6。
+
+### 8.2 判据状态（**逐条如实，交 `gate-auditor` 裁决**）
+
+| ADR 判据 | 状态 | 依据 |
+| --- | --- | --- |
+| `progress` 11 个分支对齐 `.ps1` | ✅ **代码级已对齐** | §4.2.2 表 × §7.5 对照表，每分支具名用例 |
+| 共享库 5 件 + 新 2 件单测（含负向） | ✅ | §三 表 3.2 · §7.1–§7.6 |
+| 判据不变量 §1.3.1–§1.3.6 | ✅ | §三 表 3.3 · 各节「判据不变量对照」 |
+| `.gitignore` 排除（§6.8 R10） | ✅ | §三 行 19–21（实测 5 条规则、二进制不入库） |
+| `--version`（§2.1 R4） | ✅ | §三 行 2–3 |
+| **同沙箱对拍逐字节一致（§2.5 / §6.1）** | ⛔ **未验证** | 本机无 PowerShell。装置就绪，复跑命令 §7.6.4 |
+| **selftest A 组全 PASS（§3 M0 准出）** | ⛔ **未验证** | 同上：尺子本身是 `.ps1`，本机跑不了；且 A 组的对象已变为转发层（§7.7「未做的」2） |
+| 薄转发层 fail-closed | 🟡 **静态已核，未实机** | §7.7 静态核对 6 条；实机待在装有 PowerShell 的机器上验 |
+| selftest 新增「二进制缺失」格（§6.6） | ⛔ **未实现** | 属 M3（selftest 子命令）。ADR §3 把它列为 **M0 准出**——**这是一处 M0 范围内未完成项**，如实登记，不辩称"不适用" |
+| 跨平台构建（§6.2） | ✅ | `for t in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do GOOS=… GOARCH=… CGO_ENABLED=0 go build -o /tmp/…; done` ⇒ **5/5 exit 0**，`file` 逐条确认：`ELF 64-bit LSB … statically linked`(×2) · `Mach-O 64-bit`(×2) · `PE32+ executable (console) x86-64` |
+
+**结论（实现方口径，不是准出）**：M0 的**代码与本地验证**部分完成；**对拍、selftest A 组、
+「二进制缺失」格** **三项未完成/未验证**（跨平台构建已实测通过，见上表）。按 `AGENTS.md` §2，M0 准出**未满足**，
+不得直接进 M1——需 `gate-auditor` 就「哪些可带条件放行、哪些必须补」出具裁决。
+
+### 8.3 待总控裁定（实现方不得自行拍板）
+
+1. **对拍准出**：本机缺 PowerShell。是（a）在有 PowerShell 的机器/CI 上补跑，还是（b）登记为
+   `DEFER-` 并给 M1 让路？——**影响 M0 是否可准出**。
+2. **Antigravity 侧「二进制缺失 = 非阻断」残余**（§7.7）：维持 ADR 的 `exit 1`，还是改成
+   `{0,1}` 之外的退出码并扩展 adapter（**改契约**，且会让 self-test 的 D3 格 FAIL 直到 adapter 跟上）？
+3. **selftest「二进制缺失」格**：ADR 把它列为 M0 准出，但 selftest 子命令在 M3。是把它拆成
+   「先给 `.ps1` 加一格」还是顺延到 M3 并在 ADR 上修正？——**这是 ADR 内部的一处张力**（§3 M0 准出 vs §8.1 的 M3 范围）。
+4. **`docs/changes/005` 的编号归属**：005 现同时承载「M0 地基 1/2」（已入库）与「第 2/2 次派发」。
+   若总控认为应拆成 005 / 006 两份记录（ADR §8.1 的「一阶段一号」口径），**拆分应由总控做**——
+   实现方不擅自改编号空间（`AGENTS.md` §6.1）。
