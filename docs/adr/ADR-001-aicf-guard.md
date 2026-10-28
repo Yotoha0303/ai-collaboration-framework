@@ -1,6 +1,6 @@
 # ADR-001: 用 Go 单二进制 `aicf-guard` 收拢 5 个 PowerShell 守卫
 
-- **状态**: Proposed（待 `sre-operator` 互审 ≤2 轮，收敛后转 Accepted）
+- **状态**: **Accepted**（`2026-10-28` 总控 D1 复测 P0 五条收敛：R1 编号不写死 / R2 M3 基线锁定 / R3 分母=`.ps1`+新增 / R4 `--version` / R5 CWD 待实测 均落 ADR 且负向 grep 通过；M0 前 P1 R6/R10/R13 落定；M4 前 P1 R7/R8/R14 标「M4 前补」；P2 渐进。互审第 2 轮收敛，**未派 `sre-operator` 复审**（已收敛，§4.0 上限非下限）。**01 设计环准出，可进 02 开发 M0**）
 - **日期**: 2026-10-28（UTC）
 - **作者**: `system-architect`（01 设计环）
 - **关联**: `GAP-025`②（脚本胶水，已缓解·残余）· `GAP-028`②（挂载层写死 `powershell`）· `GAP-029`（自测尺子布局无关性，已实现·待复核）· `GAP-031`（主干比对，已实现·待复核）· `DEFER-014`（自测是否挂 Stop）· issue #6 · 路线图 `docs/planning/roadmap-production.md` P1.2（`:63-68`）· 用户待办 #11
@@ -67,9 +67,12 @@ aicf-guard numbers    # ← check-numbers.ps1
 aicf-guard inject     # ← inject-agents-tail.ps1
 aicf-guard adapter    # ← stop-adapter.ps1
 aicf-guard selftest   # ← self-test.ps1
+aicf-guard --version  # ← 新增（04 环 REVISION 断言对齐，见下）
 ```
 
-共享入口 `aicf-guard <subcommand> [flags]`；`--workspace <path>` 显式覆盖工作区根（供 selftest 沙箱与单测）；`-h`/`--help` 每级都有。**不发明新子命令名**——同名是迁移期可对照的前提（每个子命令一个 PR 时，新旧可同沙箱对拍）。
+**`aicf-guard --version`**（无对应 `.ps1`，纯新增）：输出 `aicf-guard <semver> (<commit-hash>)` 一行到 stdout，exit 0。`<semver>` 来自构建期注入（`-ldflags "-X main.version=v0.1.0"`，tag `aicf-guard-v<semver>` 触发 Release 时由 CI 注入，见 §6.7）；`<commit-hash>` 同样构建期注入（`git rev-parse --short HEAD`）。**用途**：① 对齐 `AGENTS.md` §2 的 04 环准出「运行时断言 `REVISION == Git HEAD`」——selftest 首格断言 `--version` 输出的 commit 与 `git rev-parse HEAD` 一致（构建产物与源树不漂移）；② 采用方接入时确认下载的 Release 产物版本；③ `doctor`（M4 后自检，R7）以此为入口校验二进制完整性。**`--version` 不读工作区、不调 git、不依赖任何外部状态**——纯返回构建期常量，确保任何 CWD/环境都能拿到稳定输出。
+
+共享入口 `aicf-guard <subcommand> [flags]`；`--workspace <path>` 显式覆盖工作区根（供 selftest 沙箱与单测）；`-h`/`--help` 每级都有。**除 `--version` 外不发明新子命令名**——同名是迁移期可对照的前提（每个子命令一个 PR 时，新旧可同沙箱对拍）。
 
 ### 2.2 共享库（抽取的共用逻辑，**不写代码**——交 `backend-dev`）
 
@@ -94,11 +97,14 @@ aicf-guard selftest   # ← self-test.ps1
 3. `os.Executable()` 回推：若二进制在 `<ws>/.claude/hooks/` 或 `<ws>/.agents/hooks/` 或 `<ws>/bin/` 下，向上走到含 `.claude/` 或 `.agents/` 的目录。**保留 .ps1 的自定位健壮性**。
 4. CWD 向上找 `.claude/` 或 `.agents/`（兜底）。
 
-> ⚠️ **Antigravity 侧**：`.agents/hooks.json` 现用相对路径 `./hooks/…`（CWD=`.agents/`）。若改为调用 `<ws>/.claude/hooks/aicf-guard`，命令需跨目录引用。**推荐**：二进制置于 `<ws>/.claude/hooks/aicf-guard`，Antigravity 侧命令写 `../.claude/hooks/aicf-guard inject`（`.agents/` 与 `.claude/` 是兄弟）。**或**保留 `.agents/hooks/` 下薄转发层（迁移期），由转发层调二进制——**与 `.ps1` 转发层同构**，降低跨运行时耦合。**此选择交 sre-operator 互审定**（见 §5 待审点 T1）。
+> ⚠️ **Antigravity 侧**：`.agents/hooks.json` 现用相对路径 `./hooks/…`。**R5（P0，D1）**：本 ADR 此前写「CWD=`.agents/`」是**从 `.agents/hooks.json` 的 `./hooks/…` 推断的，未实测**——不得作为设计前提。**修订**：Antigravity hook 的 CWD **待 M0 开工前实测**：在 `.agents/hooks/` 加探针 hook（写一行 `pwd` 到临时文件即可）由 Antigravity 实际触发，捕获真实 CWD。**若实测与 `.agents/` 假设不符**：改用**环境变量**传递 ws 路径（候选：① 自定义 `AICF_WORKSPACE` 显式设；② 复用 `CLAUDE_PROJECT_DIR`——但 Antigravity 不保证设此变量，须同次实测确认），**不依赖相对路径**——相对路径只在 CWD 已知且稳定时可靠，而 hook 的 CWD 是宿主契约、不由本仓控制。**探针实测结果记入 `docs/changes/00N` M0 记录**（D1：读到才算）。在实测落定前，§2.3 第 4 项「CWD 向上找 `.claude/`/`.agents/`」**仅作兜底**，不作主路径。
+>
+> **二进制位置推荐**（与 CWD 实测独立，可先定）：二进制置于 `<ws>/.claude/hooks/aicf-guard`，Antigravity 侧命令写 `../.claude/hooks/aicf-guard inject`（`.agents/` 与 `.claude/` 是兄弟，**前提是 CWD 实测确认是 `.agents/`**）；**或**保留 `.agents/hooks/` 下薄转发层（迁移期），由转发层调二进制——**与 `.ps1` 转发层同构**，降低跨运行时耦合。**此选择交 sre-operator 互审定**（见 §5 待审点 T1）。
 
 ### 2.4 跨平台构建
 
 - **Go module**，`go.mod` 置于 `<ws>/aicf-guard/`（新建子目录，源码入库）；**仅用 Go 标准库**（`os`·`os/exec`·`path/filepath`·`regexp`·`encoding/json`·`strings`·`strconv`），**零外部依赖**（满足路线图「零外部依赖单二进制」）。
+- **R13（P1，M0 前定）· `go.mod` 最低 Go 版本**：`go.mod` 首行 `go <version>` 锁定本 ADR 兼容的最低版本。**本仓实测**：`go1.27.3`（`AGENTS.md` §0.0 / 任务背景）。**采用方兼容性**：`aicf-guard` 用到的特性均为标准库长稳定 API（`os`·`os/exec`·`path/filepath`·`regexp`·`encoding/json`，无 generics、无 `slices`/`maps` 包依赖），**建议 `go 1.21`** 起（Go 1.21 是 [Go 官方支持策略](https://go.dev/doc/devel/release) 当下的下限附近，主流发行版包管理器均覆盖）。**M0 开工时由 `backend-dev` 实测**：用 `go1.21` 工具链能否编过；若用到的 API 需更高版本，按实测抬高至 `1.22`/`1.23`，**不臆测**。`<version>` 锁定后写入 `docs/changes/00N` M0 记录（D1）。**`aicf-guard/` 的 `go.mod` 与 `.claude/` 或顶层无关——独立 module、独立版本声明**。
 - **构建目标**：`linux/amd64` · `linux/arm64` · `darwin/amd64` · `darwin/arm64` · `windows/amd64`。`CGO_ENABLED=0`（静态二进制，跨发行版可移植）。
 - **产物命名**：`aicf-guard`（unix）/ `aicf-guard.exe`（windows）。
 - **产物位置**：构建到 `<ws>/.claude/hooks/aicf-guard`（与原 `.ps1` 同目录，hook 配置改写最小）。**二进制不入库**（`.gitignore` 排除；与 `record.md`/`memory.md` 同属运行态/构建产物口径）。
@@ -114,11 +120,11 @@ aicf-guard selftest   # ← self-test.ps1
 
 | 阶段 | 动作 | 准出 |
 | --- | --- | --- |
-| **M0** | 建 `aicf-guard/` Go module 骨架 + 共享库 + `progress` 子命令；`.claude/hooks/check-progress.ps1` 改为薄转发层（调 `aicf-guard progress`，**二进制缺失 ⇒ 走 notice 分支 `exit 1`+stderr，不得静默**） | 同沙箱对拍逐字节一致；selftest A 组全 PASS |
+| **M0** | 建 `aicf-guard/` Go module 骨架 + 共享库 + `progress` 子命令；`.claude/hooks/check-progress.ps1` 改为薄转发层（调 `aicf-guard progress`，**二进制缺失 ⇒ 走 notice 分支 `exit 1`+stderr，不得静默**） | 同沙箱对拍逐字节一致；selftest A 组全 PASS（含新增「二进制缺失」格，§6.6）；`.gitignore` 排除规则就位（§6.8 R10）；`--version` 子命令就位（§2.1 R4） |
 | **M1** | `numbers` 子命令 + 转发层 | B 组 PASS |
 | **M2** | `inject` + `adapter` 子命令 + `.agents/hooks/` 转发层 | D3 格（退出码 ⊆ adapter 覆盖）仍 PASS |
-| **M3** | `selftest` 子命令（最复杂，含沙箱自铺/自清/G1-G2 注入） | C/E/F 组全 PASS；**耗时 < 1s**（`DEFER-014` 解除） |
-| **M4** | **切换 hook 配置**：`.claude/settings.json` 与 `.agents/hooks.json` 改为直接调 `aicf-guard <subcommand>`（**去掉 `powershell`**）⇒ Linux 守卫恢复 | Linux 上 `aicf-guard selftest` 全 PASS |
+| **M3** | `selftest` 子命令（最复杂，含沙箱自铺/自清/G1-G2 注入） | C/E/F 组全 PASS；**耗时 < 1s**（`DEFER-014` 解除）；**M3 基线锁定见 §6.3 R2** |
+| **M4** | **切换 hook 配置**：`.claude/settings.json` 与 `.agents/hooks.json` 改为直接调 `aicf-guard <subcommand>`（**去掉 `powershell`**）⇒ Linux 守卫恢复 | Linux 上 `aicf-guard selftest` 全 PASS；**M4 前 P1（R7 `doctor` / R8 端到端准出 / R14 ONBOARDING sha256）必补（§8.2）** |
 | **M5**（可选） | 删除 `.ps1` 转发层（直接调用已验证） | 仓库 `.ps1` 仅留历史；`C7` 格口径随 `.ps1` 消失而调整 |
 
 > ⚠️ **M4 是用户痛点的解除点**：M0–M3 在 Windows 上验证逻辑等价，但 Linux 上 hook 仍失效（因 settings.json 还写 `powershell`）。**M4 一刀切后 Linux 守卫才真正恢复**。若用户急需，可把 M4 的「settings.json 切换」**单独前置**（仅切 `progress`/`numbers` 两条 Stop hook，`inject`/`adapter` 留后），**不等 M2/M3**——但须先有 M0/M1 的 Go 实现与对拍。**此前置与否交总控与用户裁定**（属可逆的仓内改动，但改变 hook 契约的运行时，建议先过 sre-operator 互审）。
@@ -193,7 +199,8 @@ done
 
 ### 6.3 selftest 格数与行为对齐
 
-- Go `aicf-guard selftest` 跑通 A–G 七组；**C6 的分母（`Pass+Fail+Skip+1`）与 `.ps1` selftest 在同工作区的读数一致**（C6 自己守这条）。
+- Go `aicf-guard selftest` 跑通 A–G 七组。**R3（P0，分母矛盾修订）**：原文本写「C6 的分母与 `.ps1` selftest 在同工作区的读数一致」——**与 §3 M0「新增『二进制缺失』格」矛盾**（新增格 ⇒ 分母 +1，不可能与 `.ps1` 一致）。**修订**：**C6 的分母 = `.ps1` selftest 的分母 + Go 版新增格数**（含 §3 M0「二进制缺失」格、§6.5 后续如新增的负向金丝雀格等）。**C6 守总格数**——即「实际跑过的格子数 == 预期总格数」，**新增格计入**，不得藏零。`.ps1` 版分母作为「迁移基线」记入 M0 的 `docs/changes/00N`（同工作区实测），Go 版分母 = 基线 + 新增，**差值须具名**（哪几格是新增）。
+- **R2（P0，D1 基线锁定）**：**M3 开工时，Go selftest 的对照基线 = M3 开工当下 main HEAD 的 `.ps1` self-test.ps1**（任务背景实测 main = **1576 行**；`feat/procedure-memory` 分支为 1636 行，多 C8/C9 流程记忆格，**未合并 main**）。**若 M0–M2 期间 main 推进**（如 `feat/procedure-memory` 合入新增 C8/C9 格）：M3 须 **rebase 到新 main** 并**追平新格**（Go 版也要实现 C8/C9 对应逻辑）。**基线 commit 锁定记入 M3 的 `docs/changes/00N`**（写明：基线 commit SHA、`.ps1` 行数、A–G 组各自格数）。**判据**：M3 PR 必须给出基线 commit 与对照读数；未锁定基线 ⇒ M3 PR 阻断（D2）。
 - **`SELFTEST_INJECT=noenum`** ⇒ C3/C5/C6/C7 全 FAIL（G1 注入）。
 - **`SELFTEST_INJECT=norepo`** ⇒ 报错 + exit 1（G2 注入）。
 - **布局无关**：在目标布局沙箱（ws 根无 `.git`、仓在 `project/`）跑，C3 报「>0 张表」（非 0）、C7 报「>0 个 `.ps1`」（`GAP-029` 不回归）。
@@ -211,6 +218,55 @@ done
 ### 6.6 薄转发层 fail-closed
 
 selftest 增格：临时移走 `aicf-guard` 二进制 ⇒ `check-progress.ps1` 转发层 `exit 1`+stderr（非静默）；`inject`/`adapter` 转发层输出 `{}`/`{"decision":"allow"}`。
+
+### 6.7 Release 工作流（R6，M0 前定 · sre-operator 互审 T4 收敛）
+
+**触发**：tag `aicf-guard-v<semver>`（如 `aicf-guard-v0.1.0`）推送 ⇒ GitHub Actions 工作流 `.github/workflows/release-aicf-guard.yml` 跑构建+发布。
+
+**产物矩阵**（`CGO_ENABLED=0` 静态二进制）：
+
+| GOOS/GOARCH | 是否支持 | 备注 |
+| --- | --- | --- |
+| `linux/amd64` | ✅ | 主战场（用户当前 Linux） |
+| `linux/arm64` | ✅ | ARM 服务器 / Apple Silicon Linux VM |
+| `darwin/amd64` | ✅ | Intel Mac |
+| `darwin/arm64` | ✅ | Apple Silicon |
+| `windows/amd64` | ✅ | Windows 主战场 |
+| `windows/arm64` | ⚠️ **本期不支持** | Windows on ARM 占比小，Go 交叉编译可行但**无人验证**——登记 `GAP-0xx`（待登记，M5 后评估），有采用方提需求再加 |
+
+**每个产物附三件**：
+1. **二进制本体**：`aicf-guard-<GOOS>-<GOARCH>[.exe]`。
+2. **`.sha256`**：同目录下 `<binary>.sha256`（hex 小写、空格分隔 `<hash>  <filename>` 形态，与 `sha256sum -c` 兼容）。采用方 `sha256sum -c aicf-guard-linux-amd64.sha256` 验证。
+3. **`REVISION.txt`**：单行，内容 `<commit-hash>`（40 位 lowercase hex，构建期 `git rev-parse HEAD`）。**对齐 `AGENTS.md` §2 的 04 环「运行时断言 `REVISION == Git HEAD`」**——采用方下载后可比对 `REVISION.txt` 与 `aicf-guard --version` 输出的 commit 一致。
+
+**不可重发约束**：tag 一旦发布（Release attached）**不得 force-push 改写**——已发布的二进制是采用方的依赖，改写 = 破坏信任。**发现 bug ⇒ 发新 tag**（`aicf-guard-v0.1.1`），不动旧 tag。`aicf-guard-v<semver>` tag 受 GitHub 分支保护规则挡 force-push（与 `main` 同款保护，**采用方接入时配置**——见 §8.2 `ONBOARDING.md` 步）。
+
+**签名策略**（**本期不做**，登记 `GAP-0xx` 待 M5 后评估）：当前仅 `sha256` 完整性校验，**无来源签名**（GPG / cosign / sigstore）。**理由**：① 本仓为 PUBLIC 但流量小，签名基础设施投入大；② 采用方接入路径是「直接 clone 或 fork」，GitHub Release 本身有 HTTPS + 仓身份保证。**风险评估**：MITM 可换二进制——但攻击者要替换需先攻破 GitHub Release 或采用方下载链路，与一般 OSS 风险同阶。**解除条件**：① 有采用方报告需要可验证来源；② 框架其他产物（如 `.claude/agents/`）也建签名链路时统一加。**M5 后评估**：若路线图推进到 P2（采用方规模化），登记 `GAP-0xx` 转正式跟踪。
+
+**Release 工作流的 D3 负向用例**（准出前必跑，`AGENTS.md` D3）：
+- 注入「tag 推了但构建失败」⇒ Release 不得创建（GitHub Actions fail ⇒ 无 artifact）。
+- 注入「sha256 算错」（patch 故意写错 hash）⇒ 采用方 `sha256sum -c` 必须 exit 1（**实测**：在 PR 检查里跑一次 `sha256sum -c` 用故意错 hash，期望 fail）。
+- 注入「`REVISION.txt` 写错」（patch 写死一个 fake hash）⇒ selftest `--version` 断言 commit 与 `REVISION.txt` 一致必须 FAIL。
+
+### 6.8 `.gitignore` 同步（R10，M0 准出）
+
+**实测**（任务背景 D1 复测）：当前 `.gitignore` **未含** `aicf-guard` 排除规则（`grep aicf-guard .gitignore` exit=1）。**M0 准出必须含**：
+
+```gitignore
+# aicf-guard 二进制与构建产物（不入库；源码 aicf-guard/ 入库）
+/aicf-guard/bin/
+/.claude/hooks/aicf-guard
+/.claude/hooks/aicf-guard.exe
+```
+
+**判据**：
+1. **二进制不入库**：`git -C "$REPO" status --porcelain` 在本地 `go build` 后**不得**出现 `.claude/hooks/aicf-guard`（M0 后实测）。
+2. **源码入库**：`git -C "$REPO" ls-files aicf-guard/` 列出 `go.mod`/`main.go`/子包源码（**不**列 `aicf-guard/bin/`）。
+3. **采用方 clone 后无残留**：`git clone` 后工作区**无**预编译二进制（与「框架不携带运行态」同源，`AGENTS.md` §9.1）。
+
+**`.gitignore` 规则带前导 `/`**（与既有 `/memory.md`/`/record.md` 同口径，`AGENTS.md` §0.0 实测过的坑：不带 `/` ⇒ 任意层级同名文件全忽略）。
+
+**R10 与 R6 的关系**：R10 是源码 vs 二进制的入库边界（M0 准出）；R6 是 Release 二进制的发布边界（M0 前 ADR 落定，工作流 M3/M4 间落地，**不晚于 M4 切 hook 配置时采用方需要**）。
 
 ---
 
@@ -295,14 +351,27 @@ flowchart LR
 
 ### 8.1 ADR Accepted 后 `backend-dev` 的实现顺序（02 开发）
 
-1. **M0**：`aicf-guard/` Go module + 共享库（§2.2）+ `progress` 子命令 + `check-progress.ps1` 转发层 + 对拍测试。**先写后填** `docs/changes/002-aicf-guard-progress.md`。
-2. **M1**：`numbers` 子命令 + 转发层 + 对拍。`docs/changes/003-…`。
-3. **M2**：`inject` + `adapter` + `.agents/hooks/` 转发层。`docs/changes/004-…`。
-4. **M3**：`selftest` 子命令（最复杂；含沙箱自铺自清 + G1/G2 注入 + 布局无关枚举）。`docs/changes/005-…`。
-5. **M4**：切 hook 配置（去 `powershell`）。`docs/changes/006-…`。
-6. **M5**（可选）：删 `.ps1` 转发层。`docs/changes/007-…`。
+**R1（P0，编号违 §6.1）· 编号不写死**：原文本写死 `M0=002`/`M1=003`/.../`M5=007`——但任务背景 D1 复测：`docs/changes/` 跨分支并集实测 **001**（main）/ **002**+**003**（`feat/procedure-memory`）/ **004**（`feat/aicf-guard`，PR #67），**002-004 全被未合并分支占用**。**修订**：下列编号为**预计起点**（从 005 起），**M0 每个阶段开工时必须跨分支并集重确认**：
 
-**每个 PR（M0–M3）必须**：① 过对拍（§6.1）；② 过 `qa-validator` → `falsifier` → `gate-auditor` 三跳（`AGENTS.md` §4.2）；③ 小步提交（一子命令一 PR，`AGENTS.md` §5）。
+```bash
+# 选号前必跑（AGENTS.md §6.1 正确口径，逐 ref 列树，不用 git log --all）
+for ref in $(git for-each-ref --format='%(refname)' refs/heads refs/remotes); do
+  git ls-tree -r --name-only "$ref" -- docs/changes/
+done | sort -u
+```
+
+取并集后选**未被占用**的最小号。**不得**只查当前 HEAD（`AGENTS.md` §6.1 实测踩过的坑：并行分支各选号、合到一起才撞）。**M0–M5 各阶段的实际编号记入本 ADR 修订版**（由 `backend-dev` 在 PR 里更新本表，不重建 ADR）。
+
+| 阶段 | 预计编号 | 动作 | 准出 |
+| --- | --- | --- | --- |
+| **M0** | 005（以实测为准） | `aicf-guard/` Go module + 共享库（§2.2）+ `progress` 子命令 + `check-progress.ps1` 转发层 + 对拍测试 + `.gitignore` 同步（§6.8）+ `--version` 子命令 | 同沙箱对拍逐字节一致；selftest A 组全 PASS；`.gitignore` 含排除规则（§6.8）；`--version` 输出符合 §2.1 |
+| **M1** | 006（以实测为准） | `numbers` 子命令 + 转发层 + 对拍 | B 组 PASS |
+| **M2** | 007（以实测为准） | `inject` + `adapter` + `.agents/hooks/` 转发层 | D3 格（退出码 ⊆ adapter 覆盖）仍 PASS |
+| **M3** | 008（以实测为准） | `selftest` 子命令（最复杂；含沙箱自铺/自清/G1-G2 注入）；**M3 基线锁定见 §6.3 R2** | C/E/F 组全 PASS；**耗时 < 1s**（`DEFER-014` 解除） |
+| **M4** | 009（以实测为准） | **切换 hook 配置**：`.claude/settings.json` 与 `.agents/hooks.json` 改为直接调 `aicf-guard <subcommand>`（**去掉 `powershell`**）⇒ Linux 守卫恢复；**M4 前 P1 必补**：R7 `doctor`、R8 端到端准出、R14 ONBOARDING sha256 校验（见 §8.2） | Linux 上 `aicf-guard selftest` 全 PASS |
+| **M5**（可选） | 010（以实测为准） | 删除 `.ps1` 转发层（直接调用已验证） | 仓库 `.ps1` 仅留历史；`C7` 格口径随 `.ps1` 消失而调整 |
+
+**每个 PR（M0–M3）必须**：① 过对拍（§6.1）；② 过 `qa-validator` → `falsifier` → `gate-auditor` 三跳（`AGENTS.md` §4.2）；③ 小步提交（一子命令一 PR，`AGENTS.md` §5）；④ 选号前跑本节并集脚本（`AGENTS.md` §6.1）；⑤ **先写后填** `docs/changes/00N-…`（`AGENTS.md` §2 的 02 环准出）。
 
 ### 8.2 需同步的文档 / 台账
 
@@ -311,15 +380,40 @@ flowchart LR
 | `docs/planning/roadmap-production.md` | P1.2 行号 `:41` 的「1,210 行」更正为实测「2,452 行」（D1）；P1.2 勾选进度随 M0–M4 推进 |
 | `docs/ledger.md` | `GAP-025`②「抽离跨平台守卫入口」状态随 M4 推进更新；`GAP-028`② 挂载层在 M4 解除；`DEFER-014` 在 M3 解除（自测 <1s ⇒ 可挂 Stop） |
 | `docs/known-issues.md` §三 | 脚本胶水脆弱性章节随 M4 收口更新 |
-| `ONBOARDING.md` / `docs/adopting.md` | M4 后增「download or build aicf-guard」步（采用方接入） |
+| `ONBOARDING.md` / `docs/adopting.md` | M4 后增「download or build aicf-guard」步（采用方接入）；**R14（M4 前补）**：增 `sha256sum -c <binary>.sha256` 校验步（采用方下载后必跑，对齐 §6.7） |
 | `.claude/settings.json` / `.agents/hooks.json` | M4 改写 hook 命令（去 `powershell`，调 `aicf-guard`） |
-| `.gitignore` | 排除 `aicf-guard` 二进制产物（不入库）；**源码** `aicf-guard/` 入库 |
+| `.gitignore` | 排除 `aicf-guard` 二进制产物（不入库，§6.8）；**源码** `aicf-guard/` 入库 |
+| `.github/workflows/release-aicf-guard.yml` | **R6（M0 前定，M3/M4 间落地）**：tag `aicf-guard-v<semver>` 触发的 Release 工作流；产物矩阵 + `.sha256` + `REVISION.txt` + 不可重发约束 + D3 负向用例（§6.7） |
+| `aicf-guard/` 子命令 `doctor` | **R7（M4 前补，本轮标注）**：M4 后自检子命令——验证 `--version` 输出可读、二进制可执行、CWD 实测过、`CLAUDE_PROJECT_DIR` 设置合理等。**M4 切 hook 配置前必须有 doctor**——配置改坏时第一时间定位（对齐 sre-operator 互审 T3）。详细规格 M4 前补 |
+| `aicf-guard selftest` 端到端 | **R8（M4 前补，本轮标注）**：M4 准出必须通过 **hook 入口**触发（即 `.claude/settings.json` 调 `aicf-guard` 的真实链路），而非直接调 `aicf-guard selftest` 子命令——验证「hook 配置改对了」而非「Go 代码跑通了」（两者不等价，D3）。详细规格 M4 前补 |
+
+**M4 前补清单**（本轮 P1 标注，不写全——M4 开工前由 `backend-dev` + `sre-operator` 联合定）：
+- **R7 `doctor` 子命令**：规格、退出码契约、自检项清单。
+- **R8 M4 端到端准出**：hook 入口触发的测试用例（含「配置改坏」负向用例——`aicf-guard` 二进制改名 ⇒ selftest 失败）。
+- **R14 ONBOARDING sha256 校验**：采用方接入步骤里的完整性校验（与 §6.7 `.sha256` 对齐）。
+
+> ⚠️ **M4 前补的硬约束**：R7/R8/R14 是 **M4 准出条件**——M4 PR 必须含这三项的具体规格与实现，否则 M4 阻断（D2）。本轮只在 ADR 标注「待 M4 前补」，**不构成豁免**——M4 开工前必须落定。
 
 ### 8.3 新增 / 更新的 GAP（本 ADR 引发）
 
 - **`GAP-0xx`（待登记，M0 登记）**：**薄转发层在二进制缺失时的 fail-closed 契约**——本 ADR §3 规定转发层不得静默，但当前 `.ps1` 转发层尚未实现。M0 实现时若发现某子命令的「二进制缺失」无法与原「git 不可用」分支同形（如 `inject` 无 git 依赖，无对应 notice 分支），登记为独立缺口。
+- **`GAP-0xx`（待登记，R6 引发，M5 后评估）**：**Release 二进制无来源签名**（§6.7）——当前仅 `sha256` 完整性校验，无 GPG/cosign/sigstore。**理由**：本期流量小、GitHub Release 已有 HTTPS + 仓身份保证。**解除条件**：采用方报告需要 / 框架其他产物建签名链路时统一加。
+- **`GAP-0xx`（待登记，R6 引发，M5 后评估）**：**`windows/arm64` 产物支持**（§6.7 产物矩阵）——本期不支持，无人验证。**解除条件**：有采用方提需求。
 - **`GAP-029` 状态推进**：Go 版 selftest 的布局无关枚举是 `.ps1` 版同款逻辑的**重写**；`GAP-029` 现状「已实现（待独立复核）」⇒ Go 版交付后由 `falsifier` 独立证伪 ⇒ 可转「已解除」。
 - **`DEFER-014` 解除条件**：M3 达成 `<1s` 后，`DEFER-014` 的「挂不挂 Stop」两消——挂上无代价 ⇒ 可挂 Stop（或在 `delivery-gates.md` 固化为「改守卫后跑一次」的 Gate）。**是否挂 Stop 仍属人工裁定**（价值判断），本 ADR 只解除其技术前提。
+
+### 8.3.1 P2 渐进改进（本轮标注，**不强制修订**）
+
+sre-operator 互审第 1 轮提的 P2 建议（R9/R11/R12/R15），本轮**仅标注「渐进改进」**，不在本 ADR 修订——交路线图与后续 ADR 跟踪：
+
+| 编号 | 建议 | 处置 |
+| --- | --- | --- |
+| **R9** | selftest 增「hook 配置改坏」格（M4 切配置时的负向用例） | 与 R8 合并跟踪——R8 落地时一并实现 |
+| **R11** | 守卫 notice 结构化日志（JSON），便于排障 | 对齐 06 环（可观测性）；M5 后或独立 ADR |
+| **R12** | `aicf-guard` 自身可观测性（metrics 端点） | 与 R11 同源；本 ADR 作用域外 |
+| **R15** | `aicf-guard` 自身的 unit test 覆盖率门槛（如 80%） | M3 selftest 落地后由 `qa-validator` 在 03 环定 |
+
+**判据**：本节四项**不构成本 ADR 准出条件**——M0 可开工。M5 后或路线图推进到对应阶段时回看。
 
 ### 8.4 互审（`AGENTS.md` §4.0 硬约束）
 
@@ -332,6 +426,36 @@ flowchart LR
 - **T5**：可观测性（守卫 notice 是否需要结构化日志，便于排障；对齐 06 环）。
 
 不收敛则**提炼分歧点上交人工**——**不得自行拍板后继续**。
+
+#### 8.4.1 互审第 1 轮结果（sre-operator 出具，`2026-10-28` UTC）
+
+**裁决**：**需修订后放行**（不阻断、无不可收敛分歧）。出具 P0 必修 5 条 + P1 应修 8 条 + P2 建议 4 条，共 17 条攻击清单。
+
+#### 8.4.2 互审第 2 轮修订记录（本 ADR 作者 `system-architect`，`2026-10-28` UTC）
+
+本 ADR 第 2 轮修订对攻击清单的处置（**逐条可追溯**，§3 五段第 5 段承载）：
+
+| 编号 | 类别 | 攻击点 | 处置 | 落点 |
+| --- | --- | --- | --- | --- |
+| **R1** | P0 必修 | §8.1 编号写死违 §6.1（跨分支并集） | ✅ 修订：编号不写死，预计 005 起，每阶段开工跑并集脚本 | §8.1 |
+| **R2** | P0 必修 | §6.3 M3 基线缺位（D1） | ✅ 修订：M3 基线 = M3 开工时 main HEAD（1576 行版）；基线 commit 锁定记入 docs/changes | §6.3 |
+| **R3** | P0 必修 | §3 与 §6.3 分母矛盾 | ✅ 修订：分母 = .ps1 分母 + Go 版新增格数；C6 守总格数 | §6.3 |
+| **R4** | P0 必修 | §2.1 缺 `--version`（04 环 REVISION 断言） | ✅ 修订：增 `aicf-guard --version` 子命令，输出 `<semver> (<commit-hash>)` | §2.1 |
+| **R5** | P0 必修 | §2.3 CWD 假设未实测（D1） | ✅ 修订：标注「CWD 待 M0 前实测」+ 环境变量兜底方案 | §2.3 |
+| **R6** | M0 前 P1 | §6 缺 Release 准出 | ✅ 修订：增 §6.7 Release 工作流（产物矩阵 + sha256 + REVISION.txt + 不可重发 + 签名策略 GAP） | §6.7 |
+| **R10** | M0 前 P1 | §6 缺 `.gitignore` 同步准出 | ✅ 修订：增 §6.8 `.gitignore` 同步（M0 准出） | §6.8 |
+| **R13** | M0 前 P1 | §2.4 缺 `go.mod` 最低 Go 版本 | ✅ 修订：建议 `go 1.21` 起，M0 由 `backend-dev` 实测抬高 | §2.4 |
+| **R7** | M4 前 P1 | `doctor` 子命令 | 📌 标注「M4 前补」：规格 M4 开工前由 backend-dev + sre-operator 定 | §8.2 |
+| **R8** | M4 前 P1 | M4 端到端准出（hook 入口触发） | 📌 标注「M4 前补」 | §8.2 |
+| **R14** | M4 前 P1 | ONBOARDING sha256 校验 | 📌 标注「M4 前补」：与 §6.7 对齐 | §8.2 |
+| **R9** | P2 建议 | selftest 增「hook 配置改坏」格 | 📌 渐进改进：与 R8 合并跟踪 | §8.3.1 |
+| **R11** | P2 建议 | 守卫 notice 结构化日志 | 📌 渐进改进：M5 后或独立 ADR | §8.3.1 |
+| **R12** | P2 建议 | `aicf-guard` 自身可观测性 | 📌 渐进改进：本 ADR 作用域外 | §8.3.1 |
+| **R15** | P2 建议 | `aicf-guard` unit test 覆盖率门槛 | 📌 渐进改进：M3 后由 qa-validator 在 03 环定 | §8.3.1 |
+
+**P0 五条（R1–R5）全部收敛**；M0 前 P1（R6/R10/R13）已落 ADR；M4 前 P1（R7/R8/R14）已标注「M4 前补」；P2（R9/R11/R12/R15）标渐进改进。
+
+**互审纪律**：本 ADR 作者**不得自行宣布 Accepted**——交总控 D1 复测 P0 五条收敛后裁定（`AGENTS.md` §4.0 互审硬约束）。若总控判断需第 2 轮 sre-operator 复审，再派；不收敛则提炼分歧点上交人工。
 
 ---
 
