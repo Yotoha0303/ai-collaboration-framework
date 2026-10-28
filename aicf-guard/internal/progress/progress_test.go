@@ -322,17 +322,101 @@ func TestBlockJSONShapeNoHTMLEscaping(t *testing.T) {
 
 // --- flags ---
 
-func TestRunUnexpectedArgumentIsUsageError(t *testing.T) {
-	d := stubDeps()
-	code, out, errOut := runOnce(t, []string{"--workspace", "/ws", "stray"}, d)
-	if code != 2 {
-		t.Errorf("exit=%d want 2 (usage error, never a silent 0)", code)
+// TestRunUsageErrorsExitOne pins the {0,1}-only contract for THIS subcommand.
+//
+// qa-validator P1-1 (docs/changes/005 §十): these three cases used to return 2.
+// That looked like "loud usage error" but was in fact a SILENT ALLOW — the hosts
+// that run this hook do not define 2 as a failure (stop-adapter.ps1:56-74 falls
+// through to `allow`), so a typo'd flag retired the guard without a word.
+//
+// The assertions are deliberately threefold so a future edit cannot satisfy the
+// letter while losing the teeth: exit 1 (not 0, not 2), stdout EMPTY (a usage
+// error must never emit a decision:block), stderr NAMES the problem as a usage
+// error AND says the guard did not run.
+func TestRunUsageErrorsExitOne(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{"unknown flag", []string{"--bogus"}},
+		{"missing flag value", []string{"--workspace"}},
+		{"stray positional", []string{"--workspace", "/ws", "extra"}},
+		{"positional only", []string{"extra"}},
 	}
-	if out != "" {
-		t.Errorf("stdout=%q want empty", out)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			d := stubDeps()
+			// If a usage error ever reached decide(), this would make the run look
+			// like a silent allow (Resolve → empty → exit 0) and the assertion
+			// below would catch it as exit 0 instead of 1.
+			d.Resolve = func(string) workspace.Result { return workspace.Result{} }
+			code, out, errOut := runOnce(t, c.args, d)
+
+			if code != 1 {
+				t.Errorf("exit=%d want 1 (usage error takes the notice channel; 2 is UNREADABLE by the hosts)", code)
+			}
+			if out != "" {
+				t.Errorf("stdout=%q want empty (usage errors must not emit a decision)", out)
+			}
+			if !strings.Contains(errOut, "usage error") {
+				t.Errorf("stderr=%q must say it was a usage error", errOut)
+			}
+			if !strings.Contains(errOut, "did NOT run") {
+				t.Errorf("stderr=%q must say the guard did not run", errOut)
+			}
+		})
 	}
-	if !strings.Contains(errOut, "unexpected argument") {
-		t.Errorf("stderr=%q want an 'unexpected argument' line", errOut)
+}
+
+// TestRunNeverReturnsTwo enumerates every invocation CLASS this subcommand can
+// see and asserts none yields 2. Enumerating the classes (rather than trusting
+// the four cases above) is what makes "no path returns 2" checkable at all: the
+// original defect was one forgotten `return 2`, and there were two of them.
+//
+// Keep this list in sync with Run's branches: a new exit path must be added
+// here, and the assertion will fail the moment one of them answers 2.
+func TestRunNeverReturnsTwo(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		mut  func(*Deps)
+	}{
+		{"help long", []string{"--help"}, nil},
+		{"help short", []string{"-h"}, nil},
+		{"unknown flag", []string{"--bogus"}, nil},
+		{"missing value", []string{"--workspace"}, nil},
+		{"stray positional", []string{"stray"}, nil},
+		{"silent allow (workspace unresolved, discovery)", nil, func(d *Deps) {
+			d.Resolve = func(string) workspace.Result { return workspace.Result{} }
+		}},
+		{"notice (pointer fault)", nil, func(d *Deps) {
+			d.ReadPageName = func(string) page.NameResult { return page.NameResult{Fault: true, Name: page.DefaultPageName} }
+		}},
+		{"notice (git unusable)", nil, func(d *Deps) { d.Probe = func() bool { return false } }},
+		{"block", nil, func(d *Deps) {
+			d.ReadHead = func(string) (string, bool) { return "0000000", true }
+			d.ResolveFull = func(repo, id string) (string, bool) {
+				if id == "refs/heads/main" {
+					return fullA, true
+				}
+				return "", false
+			}
+		}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			d := stubDeps()
+			if c.mut != nil {
+				c.mut(&d)
+			}
+			code, _, errOut := runOnce(t, c.args, d)
+			if code == 2 {
+				t.Fatalf("exit=2 (stderr=%q): the hosts read 2 as ALLOW — the guard would be silently dead", errOut)
+			}
+			if code != 0 && code != 1 {
+				t.Errorf("exit=%d outside the published contract {0,1} (ADR-001 §1.2)", code)
+			}
+		})
 	}
 }
 

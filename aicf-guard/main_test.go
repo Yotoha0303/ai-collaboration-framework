@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"strings"
 	"testing"
 )
 
@@ -107,16 +108,20 @@ func TestProgressSubcommandBelow(t *testing.T) {
 	}
 }
 
-// TestProgressBadFlag: a malformed flag must be a usage error (2), never a
-// silent 0 — the guard's own flags must not be able to fail open.
+// TestProgressBadFlag: a malformed flag must be a NOTICE (1) — never a silent 0
+// and never 2. The hosts that run this hook do not read 2 as a failure, so a
+// `return 2` here was indistinguishable from "allowed" (qa-validator P1-1).
 func TestProgressBadFlag(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"progress", "--no-such-flag"}, &stdout, &stderr)
-	if code != 2 {
-		t.Errorf("exit=%d want 2; stderr=%q", code, stderr.String())
+	if code != 1 {
+		t.Errorf("exit=%d want 1; stderr=%q", code, stderr.String())
 	}
 	if stdout.Len() != 0 {
 		t.Errorf("stdout=%q want empty", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "usage error") {
+		t.Errorf("stderr=%q must say it was a usage error", stderr.String())
 	}
 }
 

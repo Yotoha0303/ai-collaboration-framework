@@ -16,6 +16,10 @@
 //	exit 0 + nothing        → one of the deliberate silences: no page, no repo,
 //	                          no mainline, no HEAD marker in the page
 //
+// The set is {0,1}. A malformed command line is NOT a third exit code: it takes
+// the exit 1 + stderr channel, because the hosts that read this hook treat any
+// code outside their known set as "allow" (see Run).
+//
 // "It said nothing" must be the same shape as the .ps1 saying nothing (§6.1),
 // which is why the silent branches are enumerated rather than collapsed.
 //
@@ -101,6 +105,10 @@ func DefaultDeps() Deps {
 	}
 }
 
+// progName prefixes usage-error lines. Kept as a constant so the wording is
+// greppable and identical across the flag paths.
+const progName = "aicf-guard progress"
+
 // Messages are copied VERBATIM from check-progress.ps1 so the two channels stay
 // byte-comparable during the migration (ADR §2.5). The pointer path inside the
 // first one is literal in the .ps1 too, not derived.
@@ -123,6 +131,23 @@ const reasonTemplate = "进度页落后于主干：%s 记录的 HEAD 是 %s，�
 
 // Run executes the subcommand and returns the process exit code. `args` is
 // everything after the subcommand name.
+//
+// # The return value is ALWAYS 0 or 1 — never 2
+//
+// This subcommand is a Stop hook, so its exit code is read by HOSTS, not by a
+// human at a terminal. Neither host treats 2 as a failure: Claude Code's Stop
+// event does not define it, and stop-adapter.ps1's `if ($exitCode -ne 0 -and
+// $stderr)`-style handling routes anything outside its known set to `allow`
+// (.agents/hooks/stop-adapter.ps1:56-74 — "若某守卫新增一个【未被覆盖】的退出码
+// （如 exit 2），适配器会落到 allow 分支", self-test.ps1:1078). A `return 2`
+// here therefore did not mean "loud error" — it meant "the guard silently
+// allowed the turn", which is the exact failure D3 exists to prevent.
+//
+// So a USAGE error (bad flag, missing flag value, stray positional) takes the
+// same channel as every other "the guard could not run" outcome: exit 1 +
+// stderr, with wording that says it was a usage error. Exit 2 is reserved for
+// the CLI layer (main.go's unknown-subcommand / no-args paths), which no hook
+// calls; docs/changes/005 §十 records that boundary.
 func Run(args []string, stdout, stderr io.Writer, d Deps) int {
 	fs := flag.NewFlagSet("progress", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -137,11 +162,16 @@ func Run(args []string, stdout, stderr io.Writer, d Deps) int {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0 // -h/--help already printed usage; asking for help is not an error
 		}
-		return 2 // malformed flags: usage error, never a silent 0
+		// flag has already complained on stderr; add the sentence that says what
+		// KIND of failure this is, then stop. Do NOT return 2 — see the doc above.
+		fmt.Fprintf(stderr, "%s: usage error: %v\n", progName, err)
+		fmt.Fprintf(stderr, "(the guard did NOT run; run `%s --help` for usage)\n", progName)
+		return 1
 	}
 	if fs.NArg() > 0 {
-		fmt.Fprintf(stderr, "aicf-guard progress: unexpected argument %q\n", fs.Arg(0))
-		return 2
+		fmt.Fprintf(stderr, "%s: usage error: unexpected argument %q\n", progName, fs.Arg(0))
+		fmt.Fprintf(stderr, "(the guard did NOT run; run `%s --help` for usage)\n", progName)
+		return 1
 	}
 	return decide(*wsFlag, stdout, stderr, d)
 }
