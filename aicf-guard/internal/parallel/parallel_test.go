@@ -1,6 +1,7 @@
 package parallel
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -26,6 +27,7 @@ func TestExitCodesDistinguishVerdicts(t *testing.T) {
 		{KindDiff, 1, "DIFF"},
 		{KindSkip, 2, "SKIP"}, // NOT 0: skipping must not look like passing
 		{KindError, 3, "ERROR"},
+		{KindIncomplete, 4, "INCOMPLETE"}, // partial coverage; NOT 0 (GAP-051)
 	}
 	seen := map[int]bool{}
 	for _, c := range cases {
@@ -225,7 +227,11 @@ func TestSummaryReportsComparedAndSkippedSeparately(t *testing.T) {
 		}
 	})
 
-	t.Run("mixed: one compared, one gated", func(t *testing.T) {
+	// NOTE (GAP-051): this subtest used to assert `VERDICT PASS` for a run that
+	// compared 1 of 2 scenarios. That assertion WAS the defect — it encoded
+	// "one comparison is enough" as the expected behaviour, which is why the
+	// rule survived review. Partial coverage is INCOMPLETE, not PASS.
+	t.Run("mixed: one compared, one gated → INCOMPLETE", func(t *testing.T) {
 		bin := fakeBin(t, "#!/bin/sh\nexit 0\n")
 		gated := passthroughScenario()
 		gated.Name = "gated"
@@ -237,10 +243,19 @@ func TestSummaryReportsComparedAndSkippedSeparately(t *testing.T) {
 			Scenarios:    []Scenario{passthroughScenario(), gated},
 		})
 		sum := rep.Summary()
-		for _, want := range []string{"COMPARED 1/2", "SKIPPED 1/2", "VERDICT PASS"} {
+		for _, want := range []string{"COMPARED 1/2", "SKIPPED 1/2", "VERDICT INCOMPLETE"} {
 			if !contains(sum, want) {
 				t.Errorf("summary %q must contain %q", sum, want)
 			}
+		}
+		if contains(sum, "VERDICT PASS") {
+			t.Errorf("summary claims PASS on 1/2 coverage: %q", sum)
+		}
+		if rep.Kind != KindIncomplete {
+			t.Errorf("Kind=%v want INCOMPLETE", rep.Kind)
+		}
+		if got := rep.Kind.ExitCode(); got != 4 {
+			t.Errorf("exit=%d want 4 (INCOMPLETE) — a partial run must not exit 0", got)
 		}
 	})
 
@@ -292,6 +307,93 @@ func TestRunAllSkippedScenariosStaysSkip(t *testing.T) {
 	if rep.Kind != KindSkip {
 		t.Fatalf("Kind=%v want SKIP (nothing was compared)", rep.Kind)
 	}
+}
+
+// TestFullCoverageRequiredForPass is GAP-051 / gate-auditor B8.
+//
+// The verdict rule used to be "at least ONE scenario was compared" (anyComparable),
+// so a run that compared 1 of 15 and SKIPPED the other 14 still printed
+// `VERDICT PASS` and exited 0 — and docs/changes/005 §7.6.4 read that exit=0 as
+// the parity criterion. That is the D3 failure mode this harness exists to
+// prevent (an empty denominator reported as 100%): coverage can collapse to one
+// scenario and the gate stays green.
+//
+// The scenario COUNT is taken from the real Scenarios() list, not hardcoded, so
+// this test keeps biting as that list grows.
+func TestFullCoverageRequiredForPass(t *testing.T) {
+	n := len(Scenarios())
+	if n < 2 {
+		t.Fatalf("len(Scenarios())=%d, need >=2 for this test to mean anything", n)
+	}
+
+	// synthetic mirrors the real list's names and length, but with
+	// do-nothing fixtures so a fake binary can satisfy every Expect.
+	synthetic := func() []Scenario {
+		out := make([]Scenario, 0, n)
+		for i, sc := range Scenarios() {
+			s := passthroughScenario()
+			s.Name = sc.Name
+			if i > 0 {
+				s.SkipReason = func() string { return "synthetic: oracle could not run here" }
+			}
+			out = append(out, s)
+		}
+		return out
+	}
+
+	t.Run("one comparable of N must not be PASS", func(t *testing.T) {
+		rep := Run(Options{
+			GuardBinary:  fakeBin(t, "#!/bin/sh\nexit 0\n"),
+			Oracle:       fakeBinNamed(t, "sh", "#!/bin/sh\nexit 0\n"),
+			LegacyScript: fakeScript(t, "#!/bin/sh\nexit 0\n"),
+			Scenarios:    synthetic(),
+		})
+		if rep.Kind == KindPass {
+			t.Errorf("Kind=PASS with only 1/%d scenarios compared — coverage collapsed and the gate stayed green", n)
+		}
+		if rep.Kind.ExitCode() == 0 {
+			t.Errorf("exit=%d want non-zero: a partial run must not read as准出", rep.Kind.ExitCode())
+		}
+		sum := rep.Summary()
+		if contains(sum, "VERDICT PASS") {
+			t.Errorf("summary claims PASS on partial coverage:\n%s", sum)
+		}
+		if !contains(sum, fmt.Sprintf("COMPARED 1/%d", n)) {
+			t.Errorf("summary must state the real coverage COMPARED 1/%d:\n%s", n, sum)
+		}
+	})
+
+	t.Run("all comparable is still PASS with COMPARED N/N", func(t *testing.T) {
+		scs := synthetic()
+		for i := range scs {
+			scs[i].SkipReason = nil
+		}
+		rep := Run(Options{
+			GuardBinary:  fakeBin(t, "#!/bin/sh\nexit 0\n"),
+			Oracle:       fakeBinNamed(t, "sh", "#!/bin/sh\nexit 0\n"),
+			LegacyScript: fakeScript(t, "#!/bin/sh\nexit 0\n"),
+			Scenarios:    scs,
+		})
+		if rep.Kind != KindPass {
+			t.Fatalf("Kind=%v want PASS when every scenario was compared", rep.Kind)
+		}
+		want := fmt.Sprintf("COMPARED %d/%d", n, n)
+		if sum := rep.Summary(); !contains(sum, want) {
+			t.Errorf("summary must contain %q:\n%s", want, sum)
+		}
+	})
+
+	t.Run("a PASS verdict line reads COMPARED N/N", func(t *testing.T) {
+		// The invariant has to be readable from the report ALONE: a PASS that
+		// does not carry full coverage in its verdict line is the defect itself.
+		sum := Report{
+			Kind:        KindPass,
+			Comparisons: fullCoverageComparisons(Scenarios()),
+		}.Summary()
+		if last := lastLine(sum); !contains(last, fmt.Sprintf("COMPARED %d/%d", n, n)) {
+			t.Errorf("PASS verdict line must read COMPARED %d/%d, got %q", n, n, last)
+		}
+	})
 }
 
 // TestRunTimeoutIsAnError: a hanging side must end as ERROR, not as a diff or a
@@ -454,6 +556,30 @@ func fakeScript(t *testing.T, content string) string {
 		t.Fatal(err)
 	}
 	return p
+}
+
+// fullCoverageComparisons turns a scenario list into comparisons that all
+// happened and all matched — the only shape a PASS may be built from.
+func fullCoverageComparisons(scs []Scenario) []Comparison {
+	out := make([]Comparison, 0, len(scs))
+	for _, sc := range scs {
+		out = append(out, Comparison{
+			Name:       sc.Name,
+			Go:         Result{Exit: 0},
+			Oracle:     Result{Exit: 0},
+			Comparable: true,
+		})
+	}
+	return out
+}
+
+// lastLine returns the final line of a summary (the verdict line).
+func lastLine(s string) string {
+	s = strings.TrimRight(s, "\n")
+	if i := strings.LastIndex(s, "\n"); i >= 0 {
+		return s[i+1:]
+	}
+	return s
 }
 
 func contains(haystack, needle string) bool { return strings.Contains(haystack, needle) }

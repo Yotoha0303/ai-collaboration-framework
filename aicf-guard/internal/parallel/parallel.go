@@ -21,6 +21,19 @@
 // Go side matches its documented expectation", NOT "the port is equivalent".
 // docs/changes/005 records the parity criterion as UNVERIFIED for that reason.
 //
+// # Coverage is part of the verdict
+//
+// PASS is reserved for a run in which EVERY scenario in the list was actually
+// compared (COMPARED N/N). A run that compared some but not all of them is
+// INCOMPLETE and exits non-zero — it is never PASS. Before GAP-051 the rule was
+// "at least one comparison happened", so `COMPARED 1/15` printed
+// `VERDICT PASS` and exited 0, and docs/changes/005's parity criterion read that
+// 0 as a pass: coverage could collapse to one scenario and the gate stayed
+// green. That is the D3 failure mode (an empty denominator reported as 100%).
+// If per-platform gating ever makes COMPARED N/N unreachable, the fix is to
+// make the gate explicit and name it in the verdict line — NOT to lower the bar
+// back to "one is enough".
+//
 // # The scenarios
 //
 // Each one mirrors a named cell of .claude/hooks/self-test.ps1's A group (the
@@ -46,7 +59,8 @@ import (
 type RunKind int
 
 const (
-	// KindPass: an oracle was supplied and every scenario matched byte for byte.
+	// KindPass: an oracle was supplied and EVERY scenario in the list was
+	// compared and matched byte for byte (COMPARED N/N, N = len(Comparisons)).
 	KindPass RunKind = iota
 	// KindDiff: an oracle was supplied and at least one scenario differed.
 	KindDiff
@@ -58,6 +72,18 @@ const (
 	// aborts the run; an Expect violation does NOT — it is recorded against
 	// that scenario and the remaining scenarios are still processed (see Run).
 	KindError
+	// KindIncomplete: an oracle was supplied and the scenarios that ran all
+	// matched, but at least one scenario was NOT compared (platform-gated, or
+	// the oracle could not run for it). The evidence that exists is good; the
+	// COVERAGE is not whole, so the run cannot be read as parity (GAP-051).
+	//
+	// Deliberately a SEPARATE kind rather than folding into KindSkip: SKIP means
+	// "nothing was compared", INCOMPLETE means "some were, and the rest were
+	// not" — a reader has to be able to tell a run that never started from one
+	// that stopped halfway. It does NOT reuse KindError either: an incomplete
+	// run is not a defect in the harness, and calling it ERROR would hide the
+	// fact that every comparison that did happen passed.
+	KindIncomplete
 )
 
 func (k RunKind) String() string {
@@ -70,18 +96,25 @@ func (k RunKind) String() string {
 		return "SKIP"
 	case KindError:
 		return "ERROR"
+	case KindIncomplete:
+		return "INCOMPLETE"
 	}
 	return "UNKNOWN"
 }
 
 // ExitCode maps the verdict onto a process exit code so a shell can tell the
-// four outcomes apart:
+// five outcomes apart:
 //
-//	0 PASS · 1 DIFF · 2 SKIP · 3 ERROR
+//	0 PASS · 1 DIFF · 2 SKIP · 3 ERROR · 4 INCOMPLETE
 //
 // SKIP deliberately does NOT reuse 0. A caller that wants parity enforced can
 // treat 2 as fatal (`test $? -eq 0`), while a caller that merely wants "did the
 // Go side behave" can accept 0 or 2.
+//
+// 4 was chosen for INCOMPLETE because 3 is the conventional "internal error"
+// code and INCOMPLETE is not an internal error; 4 collides with nothing else
+// here (and AICF's own hook contract for `progress` is unaffected: this is the
+// exit code of the DEVELOPER TOOL tools/parallel, not of a hook).
 func (k RunKind) ExitCode() int {
 	switch k {
 	case KindPass:
@@ -90,6 +123,8 @@ func (k RunKind) ExitCode() int {
 		return 1
 	case KindSkip:
 		return 2
+	case KindIncomplete:
+		return 4
 	}
 	return 3
 }
@@ -156,6 +191,12 @@ type Report struct {
 // expectation violation is reported per scenario (EXPECT …) and counted
 // separately, so "the Go side disagreed with its own documentation" cannot be
 // read as "the two implementations were compared and agreed".
+//
+// The verdict word and the counts are deliberately in the SAME line: `PASS` can
+// only ever appear with `COMPARED N/N`, so a reader (or a grep in
+// docs/changes/005 §7.6.4) cannot see a green verdict without also seeing how
+// much of the list it covers. That pairing is the invariant; a PASS produced by
+// Run always carries full coverage (see the coverage rule at the end of Run).
 func (r Report) Summary() string {
 	var b strings.Builder
 	for _, c := range r.Comparisons {
@@ -315,22 +356,33 @@ func Run(opts Options) Report {
 		}
 		rep.Comparisons = append(rep.Comparisons, cmp)
 	}
-	// PASS requires at least one COMPARED scenario: an all-skipped run (no
-	// platform-applicable scenarios) must stay SKIP, never become a green pass.
-	if compare && rep.Kind == KindSkip && anyComparable(rep.Comparisons) {
-		rep.Kind = KindPass
-	}
-	return rep
-}
-
-// anyComparable reports whether at least one comparison actually happened.
-func anyComparable(cs []Comparison) bool {
-	for _, c := range cs {
-		if c.Comparable {
-			return true
+	// A run is only as good as its COVERAGE, so the verdict is decided from the
+	// counts, not from "did anything happen at all".
+	//
+	//   compared == 0        → SKIP        (nothing was compared: no oracle, or
+	//                                        every scenario gated)
+	//   0 < compared < total → INCOMPLETE  (some matched, but not all — the run
+	//                                        cannot be read as parity)
+	//   compared == total    → PASS        (only reachable with an oracle; with
+	//                                        no oracle nothing is Comparable)
+	//
+	// GAP-051: this block used to be `if compare && KindSkip && anyComparable`,
+	// i.e. ONE comparison was enough for PASS, so `COMPARED 1/15` exited 0 and
+	// docs/changes/005's parity criterion read that 0 as准出. Requiring
+	// compared == total is what makes the last line self-certifying: PASS cannot
+	// appear next to `n < N`.
+	if rep.Kind == KindSkip { // DIFF and ERROR are decided above and never reach here
+		compared, _, _ := rep.counts()
+		switch {
+		case compared == 0:
+			rep.Kind = KindSkip
+		case compared == len(rep.Comparisons):
+			rep.Kind = KindPass
+		default:
+			rep.Kind = KindIncomplete
 		}
 	}
-	return false
+	return rep
 }
 
 // runScenario builds a sandbox and runs the guard against it.

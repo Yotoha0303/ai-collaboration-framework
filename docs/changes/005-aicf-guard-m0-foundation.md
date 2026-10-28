@@ -617,8 +617,9 @@ $ 指针指向不存在的页名 gone.html → 无输出            exit=0
 | --- | --- |
 | 有 oracle ⇒ 真对拍 | `-oracle <pwsh 路径>`：每场景各建一个沙箱跑两路，**exit / stdout / stderr 三者逐字节比**（stderr 与 stdout **分开**捕获——契约里 block 走 stdout、notice 走 stderr，合并就抹掉了被比的那件事） |
 | 无 oracle ⇒ 明确 SKIP | 每场景一行 `SKIP <名> — oracle not configured…；parity is UNVERIFIED`，末行 `VERDICT SKIP` |
-| **跳过与通过必须可区分** | exit code：`0 PASS · 1 DIFF · 2 SKIP · 3 ERROR`（`RunKind.ExitCode()`）。`go test` 只能出 0/1，故另设 `tools/parallel` 可执行入口 |
-| 场景清单先于 oracle 就位 | 14 个具名场景（A1–A13 + P2/P3/P6/P4-P5），每个带**输入配方 + 期望 exit/stdout/stderr** |
+| **跳过与通过必须可区分** | exit code：`0 PASS · 1 DIFF · 2 SKIP · 3 ERROR · 4 INCOMPLETE`（`RunKind.ExitCode()`）。`go test` 只能出 0/1，故另设 `tools/parallel` 可执行入口 |
+| **覆盖面是判决的一部分**（`GAP-051`） | `PASS` 要求 `compared == len(Comparisons)`（即 `COMPARED N/N`）；部分比过 ⇒ `INCOMPLETE`（4）；一条未比 ⇒ `SKIP`（2）。**"比过一条" 不再等于通过** |
+| 场景清单先于 oracle 就位 | **15** 个具名场景（A1–A13 + P2/P3/P6/P4-P5），每个带**输入配方 + 期望 exit/stdout/stderr** |
 | 沙箱两侧**可逐字节比** | fixture 提交钉死 `GIT_AUTHOR_DATE`/`GIT_COMMITTER_DATE`（`fixtureDate`）——否则两侧 commit id 不同，而 block 的 `reason` **内嵌** short SHA（`.ps1:403`），会因与移植无关的原因"不等" |
 
 **为什么不是 `aicf-guard` 的子命令**：ADR §2.1 明文「除 `--version` 外不发明新子命令名」，迁移期子命令名
@@ -636,11 +637,15 @@ $ go build -o /tmp/aicf-parallel ./tools/parallel     # 在 aicf-guard/ 下
 $ /tmp/aicf-parallel -guard /tmp/aicf-guard
 SKIP  A1 正控 页面存在+错SHA → decision:block — oracle not configured (set AICF_ORACLE); the .ps1 was NOT run, so parity is UNVERIFIED
 SKIP  A2 对照 页面存在+SHA一致 → 静默 — …
-…（14 行 SKIP）…
-VERDICT SKIP — 14 scenario(s)
+…（15 行 SKIP）…
+VERDICT SKIP — COMPARED 0/15, SKIPPED 15/15
 $ echo $?
 2                                                     # ← SKIP ≠ PASS（PASS 是 0）
 ```
+
+> 上段是 `2026-10-28` `GAP-051` 修复后的**实测**读数（`/tmp/aicf-parallel -guard /tmp/aicf-guard`，
+> **不经管道**取退出码；经 `| tail` 取到的是 `tail` 的 0，不是 harness 的）。修复前这一行是
+> `VERDICT SKIP — 14 scenario(s)`——**单个数**，读不出覆盖面。
 
 > ⚠️ 用 `go run ./tools/parallel` 时 shell 看到的是 **1**（`go run` 把子进程的 2 归一成 1 并打印
 > `exit status 2`）。**必须用编译后的产物**才拿得到 2/3 的区分——这一点已实测，写在这里免得下一个人误读。
@@ -666,6 +671,7 @@ $ echo $?
 | `TestRunSkipWithoutOracle` | 不配 oracle | `SKIP`，且 exit code **≠** PASS 的 |
 | `TestRunAllSkippedScenariosStaysSkip` | 唯一场景被平台门禁跳过 | **仍是 `SKIP`**（不能因"比过了 0 条"而转绿） |
 | `TestRunExpectationViolationIsError` | Go 侧违反自己写下的期望 | `ERROR`——**无 oracle 时的运行不是空跑** |
+| `TestFullCoverageRequiredForPass` | 15 场景里**只有 1 条** `Comparable`（`SkipReason` 让其余 14 条退化） | **不是 `PASS`**，`exit ≠ 0`，且末行必须自报 `COMPARED 1/15`（`GAP-051`） |
 
 #### 7.6.4 在有 PowerShell 的机器上复跑的确切命令
 
@@ -680,14 +686,81 @@ go build -o /tmp/aicf-parallel ./tools/parallel
 /tmp/aicf-parallel -guard /tmp/aicf-guard \
     -oracle "$(command -v pwsh || command -v powershell)" \
     -legacy ../.claude/hooks/check-progress.legacy.ps1
-echo "exit=$?"     # 0 = 逐字节一致（准出）；1 = 有差异（阻断）；3 = harness/oracle 出错
+echo "exit=$?"     # 0 = 逐字节一致且全场景都比过（准出）；1 = 有差异（阻断）；2 = 未比对；3 = harness/oracle 出错；4 = 有场景未比（覆盖面不全，阻断）
 ```
 
-**判据**：`exit=0` **且**末行 `VERDICT PASS` 才算对拍准出。出现任何 `DIFF` ⇒ 该 PR 阻断（ADR §2.5）。
+**判据**：`exit=0` **且**末行 `VERDICT PASS — COMPARED N/N` 才算对拍准出，其中
+**`N` = `len(Scenarios())`**（该值由代码取，不在文档里写死）。出现任何 `DIFF` ⇒ 该 PR 阻断（ADR §2.5）。
+
+> ⚠️ **`COMPARED n/N` 的 `n` 必须等于 `N`**。只写 `exit=0` 是不够的：`2026-10-28` 之前的判定规则是
+> 「至少比过 1 条即 `PASS`」，于是 `COMPARED 1/15` 也会 `exit=0`、也会打 `VERDICT PASS` —— 覆盖面塌到
+> 一条时准出照样绿（`GAP-051`，与 D3「空分母当成 100%」同族）。现规则：**`compared == len(Comparisons)`
+> 才 `PASS`**，任何一条未比 ⇒ `INCOMPLETE`（`exit=4`）；一条都没比 ⇒ `SKIP`（`exit=2`）。见 §7.6.5。
+
 **本机无法执行此命令**——`pwsh`/`powershell` 均不存在，故**M0 的对拍准出保持未验证**。
 
 **判据不变量对照（ADR §2.5 / §6.1）**：对拍**未满足**（不是"不适用"）——按 `AGENTS.md` §2，对应物存在、
 判据存在、但**本机无运行时**，故记为「未验证 + 原因」，交三跳链裁决。
+
+#### 7.6.5 `GAP-051` · 覆盖面塌陷仍报 PASS（`gate-auditor` 第 3 跳 B8）
+
+**问题（已实测，不是推断）**：判定规则是「**至少比过 1 条**即 `PASS`」——
+
+```go
+if compare && rep.Kind == KindSkip && anyComparable(rep.Comparisons) {
+    rep.Kind = KindPass
+}
+```
+
+于是 **`COMPARED 1/15` 也打 `VERDICT PASS` 且 `exit=0`**，而 §7.6.4 把「`exit=0` 且末行 `VERDICT PASS`」
+当作对拍准出判据 ⇒ **覆盖面静默塌陷时准出照样绿**。这正是 D3 点名的「空分母被当成 100%」同族。
+
+**改法**：判决由**计数**决定，不由「有没有发生过」决定。
+
+| 计数 | Kind | exit | 含义 |
+| --- | --- | --- | --- |
+| `compared == 0` | `SKIP` | 2 | 一条都没比（无 oracle / 全部平台门禁） |
+| `0 < compared < N` | **`INCOMPLETE`**（新增） | **4** | 比过的都一致，但**覆盖面不全** ⇒ 不得读成 parity |
+| `compared == N` | `PASS` | 0 | 全场景比过且一致 |
+
+- **为什么选「全等」而不是显式阈值**：`Scenarios()` 是**固定清单**，不存在「按平台合法地只比一部分」的
+  设计意图——唯一的平台门禁（P4/P5，`SkipReason`）在 Windows 上触发时，正确结论是「本平台拿不到完整
+  证据」，不是「本平台可以少比一条仍算准出」。若未来真需要按平台跳过，**正确做法是把门禁显式化并写进末行**，
+  而不是把门槛降回「比过一条就算」。这段理由已写进 `parallel.go` 的包注释与 `RunKind` 的常量注释。
+- **为什么新增 `KindIncomplete` 而不复用 `KindSkip` / `KindError`**：`SKIP` 是「一条没比」，`INCOMPLETE` 是
+  「比了一部分」——把两者并成一个，读者就分不出「没开始」和「中途停了」；而算成 `ERROR` 会掩盖
+  「比过的那些确实全过了」这一事实。三者信息量不同，必须分开。
+- **退出码 4 不与 `{0,1,2,3}` 冲突**（`TestExitCodesDistinguishVerdicts` 已把它纳入唯一性断言）。它只影响
+  开发工具 `tools/parallel`，**不触及任何 hook 契约**——`progress` 子命令的退出码仍是 `{0,1}`，
+  self-test 的 D3 格不受影响。
+
+**末行现在自证覆盖面**（`N` 由 `len(Comparisons)` 取，**不硬编码**，`scenarios.go` 增长时自动跟随）：
+
+```
+VERDICT INCOMPLETE — COMPARED 1/15, SKIPPED 14/15     ← 修复后：覆盖面塌陷不再报 PASS
+```
+
+**TDD 红 → 绿（实测读数）**：
+
+```
+# 红（先写的负向用例，此时实现未改）
+--- FAIL: TestFullCoverageRequiredForPass/one_comparable_of_N_must_not_be_PASS
+    parallel_test.go:338: Kind=PASS with only 1/15 scenarios compared — coverage collapsed and the gate stayed green
+    parallel_test.go:341: exit=0 want non-zero: a partial run must not read as准出
+    parallel_test.go:345: summary claims PASS on partial coverage:
+        …
+        VERDICT PASS — COMPARED 1/15, SKIPPED 14/15
+
+# 绿（实现后，同一条用例）
+ok  aicf-guard/internal/parallel
+```
+
+> **一个既有用例原本就断言了这个 bug**：`TestSummaryReportsComparedAndSkippedSeparately/mixed`
+> 期望 `COMPARED 1/2` **且** `VERDICT PASS`——「比过一条就算过」被写成了**预期行为**，这正是这条规则
+> 能活过评审的原因。已改为断言 `VERDICT INCOMPLETE` + `exit=4`，并在用例里注明原断言即缺陷。
+
+**代价（显式）**：每次断言 PASS 都需要**全清单**可比对，Windows 上 P4/P5 被门禁 ⇒ 该平台**拿不到 PASS**，
+只能拿 `INCOMPLETE`。这是**有意的**：宁可在该平台报「证据不全」，也不要它报一个覆盖面只有 14/15 的绿。
 
 ### 7.7 U7 · `.claude/hooks/check-progress.ps1` → 薄转发层
 

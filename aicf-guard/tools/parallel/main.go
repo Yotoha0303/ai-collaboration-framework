@@ -14,9 +14,15 @@
 //	go run ./tools/parallel -guard /tmp/aicf-guard -oracle pwsh \
 //	    -legacy ../.claude/hooks/check-progress.legacy.ps1
 //
-// Exit codes distinguish the four verdicts (never collapse SKIP into PASS):
+// Exit codes distinguish the five verdicts (never collapse SKIP or INCOMPLETE
+// into PASS):
 //
-//	0 PASS · 1 DIFF · 2 SKIP · 3 ERROR
+//	0 PASS · 1 DIFF · 2 SKIP · 3 ERROR · 4 INCOMPLETE
+//
+// PASS means every scenario in the list was compared and matched (the verdict
+// line reads COMPARED N/N). INCOMPLETE means some comparisons were made and
+// passed, but at least one scenario was not compared — it exits non-zero on
+// purpose: a parity gate must not read partial coverage as a pass.
 package main
 
 import (
