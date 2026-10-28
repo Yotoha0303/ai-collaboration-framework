@@ -101,6 +101,14 @@ aicf-guard --version  # ← 新增（04 环 REVISION 断言对齐，见下）
 >
 > **二进制位置推荐**（与 CWD 实测独立，可先定）：二进制置于 `<ws>/.claude/hooks/aicf-guard`，Antigravity 侧命令写 `../.claude/hooks/aicf-guard inject`（`.agents/` 与 `.claude/` 是兄弟，**前提是 CWD 实测确认是 `.agents/`**）；**或**保留 `.agents/hooks/` 下薄转发层（迁移期），由转发层调二进制——**与 `.ps1` 转发层同构**，降低跨运行时耦合。**此选择交 sre-operator 互审定**（见 §5 待审点 T1）。
 
+#### 2.3.1 现状契约 · 页名指针**只在** `.claude/`（采集时点 `2026-10-28`；记录当前实现的事实，不是已选定的方案）
+
+> `progress` 的页名指针路径**写死** `<ws>/.claude/progress-page.txt`（`aicf-guard/internal/progress/progress.go:211-212`），**不从** `.agents/` 读；缺失即退回默认页名 `project-progress.html`（`aicf-guard/internal/page/page.go:20`），页面按 `<ws>/<name>` 与 `<父目录>/<name>` 两处找（`aicf-guard/internal/workspace/workspace.go:104-114`）。而工作区识别**同时接受** `.claude/` 与 `.agents/`（`aicf-guard/internal/workspace/workspace.go:149-159`）⇒ 纯 `.agents/` 布局下**指针机制不生效**。
+
+> 后果（`2026-10-28` 实测，`falsifier` A5 / 总控代跑）：纯 `.agents/` 布局 + 非默认页名 ⇒ `exit 0` / stdout 空 / stderr 空（静默失明）；同一工作区再放一份 `.claude/progress-page.txt` ⇒ 立刻 `{"decision":"block",…}`。
+
+> 已登记为 **`GAP-057`**（`docs/ledger.md`），解除条件三选一、**待人工裁定**；**本节只记录现状，不作裁定**，亦不改动本 ADR 的其余契约。
+
 ### 2.4 跨平台构建
 
 - **Go module**，`go.mod` 置于 `<ws>/aicf-guard/`（新建子目录，源码入库）；**仅用 Go 标准库**（`os`·`os/exec`·`path/filepath`·`regexp`·`encoding/json`·`strings`·`strconv`），**零外部依赖**（满足路线图「零外部依赖单二进制」）。
@@ -462,6 +470,8 @@ sre-operator 互审第 1 轮提的 P2 建议（R9/R11/R12/R15），本轮**仅�
 
 **P0 五条（R1–R5）全部收敛**；M0 前 P1（R6/R10/R13）已落 ADR；M4 前 P1（R7/R8/R14）已标注「M4 前补」；P2（R9/R11/R12/R15）标渐进改进。
 
+**修订记录（`2026-10-28`，`gate-auditor` 第 3 跳 B7 · 文档同步，非互审轮次）**：新增 §2.3.1「现状契约 · 页名指针只在 `.claude/`」，记录 `GAP-057` 的实现事实并指向台账——**只记录现状，不作裁定**（三选一解除条件待人工裁定）。
+
 **互审纪律**：本 ADR 作者**不得自行宣布 Accepted**——交总控 D1 复测 P0 五条收敛后裁定（`AGENTS.md` §4.0 互审硬约束）。若总控判断需第 2 轮 sre-operator 复审，再派；不收敛则提炼分歧点上交人工。
 
 ---
@@ -471,5 +481,5 @@ sre-operator 互审第 1 轮提的 P2 建议（R9/R11/R12/R15），本轮**仅�
 - 路线图：`docs/planning/roadmap-production.md` P1.2（`:63-68`）
 - 守卫脚本（实测）：`.claude/hooks/check-progress.ps1`（413 行）· `.claude/hooks/check-numbers.ps1`（280 行）· `.claude/hooks/self-test.ps1`（1576 行）· `.agents/hooks/inject-agents-tail.ps1`（103 行）· `.agents/hooks/stop-adapter.ps1`（80 行）
 - hook 配置：`.claude/settings.json` · `.agents/hooks.json`
-- 台账条目：`docs/ledger.md` 的 `GAP-025` / `GAP-028` / `GAP-029` / `GAP-031` / `DEFER-014`
+- 台账条目：`docs/ledger.md` 的 `GAP-025` / `GAP-028` / `GAP-029` / `GAP-031` / `GAP-046` / `GAP-057` / `DEFER-014` / `DEFER-019` / `DEFER-020`
 - 规则源：`AGENTS.md` §0.0（布局）· §2（门禁）· §5（守卫契约/交付路径）· §6（标识符）· D1（读到才算）· D3（可证伪）· D4（SSOT）
