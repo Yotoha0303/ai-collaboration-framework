@@ -556,6 +556,87 @@ against it.
 > expensive than three extra hops**: what the former produces is a criterion you cannot trust, and an
 > untrustworthy criterion goes on **looking correct** in every later stage.
 
+### 4.3 Parallel dispatch (fill the cap when a task splits — but **only inside a bucket**)
+
+**Source**: `docs/adr/ADR-002-parallel-subagents.md` (issue #70). **The ADR holds the design and rationale; this section is the normative rule.**
+
+**Two definitions** (you need these two words before "parallel" means anything):
+
+| Term | Definition |
+| --- | --- |
+| **Parallel bucket** | A set of subtasks **within one lifecycle stage** that have **no input/output dependency on each other** and **produce no stage-transition verdict** |
+| **Chain** | One complete "stage -> transition triple -> next stage" path (`§4.2`) |
+
+**Hard rules**:
+
+1. **Fill the bucket up to the cap**, which is **3** (the existing `§4.0` limit — **this section adds no new cap**);
+2. **Merge same-role subtasks into 1 instance** — multiple subtasks go into one prompt. **"N parallel instances of the same role" is out of scope**;
+3. **Cross-chain critical section**: with >= 2 chains alive, **any write** (commit / ledger / `memory.md` / `docs/changes`) is allowed
+   to **only one chain at a time**; chains without the lock **read only**;
+4. **Any subtask failure inside a bucket => the whole bucket produced nothing**; fix, then **rerun the whole bucket**. **No "partial advance"**;
+5. **The read-only triple never runs in parallel** — frozen by `§4.2` plus `DEFER-013` (human ruling: "sequential" means strictly serial). **This section does not touch it.**
+
+> ⚠️ **Why buckets only**: multiple buckets in one stage (A builds payments, B builds login) *are* technically separable,
+> but when both land in the 01 review at the same time, `gate-auditor` cannot answer "which stage are we in" — D2 degrades into
+> **two mutually contradictory gate passes**. So **multiple buckets are allowed, but each must carry its own 01 assets**
+> (its own ADR section + its own testable acceptance criteria); **if it cannot, fall back to a single chain**.
+
+> ⚠️ **The mechanical strength of this section (as-is)**: **prompt-only**. No `PreToolUse` guard checks the in-flight count,
+> so **over-dispatch and compliance are observationally identical** (`GAP-017` / `GAP-024` family).
+> The guard's spec and known blockers are in ADR-002 §6.3; **not wired** (`GAP-047`).
+
+### 4.4 Out-of-repo collaboration directory (parallel subagents' shared scratch, **not committed**)
+
+**Source**: `docs/adr/ADR-002-parallel-subagents.md` (issues #71, #72). **The ADR holds the design and rationale; this section is the normative rule.**
+
+**Shape** (at the workspace root, sibling to `.claude/`):
+
+```
+.collab/<task-code>/<subagent-name>.md     # one file per subagent, append-only
+.collab/<task-code>/_index.md              # dispatch list; orchestrator-only
+.collab/<task-code>/README.md              # one-page declaration; written at dispatch time
+```
+
+**Task code**: `T-<YYYYMMDD>-<slug>` (e.g. `T-20261028-parallel-dispatch`).
+
+- **`T-` is not an identifier class** and **does not enter the `§6` identifier table** — all five classes there demand
+  "registered and long-term traceable", while `T-` **disappears when the task ends**.
+- **Numeric form is forbidden** (`T-001`): that is yet another **cross-branch shared counter**, exactly the trap `§6.1` has falsified three times.
+- **Visibility anchor**: the code **must** first appear in a **committed** change record — in the **filename** of
+  `docs/changes/NNN-<slug>.md` (not the title: `check-numbers.ps1` reads paths only, never file bodies). Anchoring it in
+  `record.md` **does not work** — that file is not committed, so it is **invisible across branches**.
+
+**Six hard constraints**:
+
+| # | Constraint |
+| --- | --- |
+| **C1** | **One file per subagent**, never shared — sharing means concurrent writes to one file, the D4 "two copies at different maturity" family |
+| **C2** | Writer roles **append only to their own file**; `_index.md` is **orchestrator-only** (isomorphic to `record.md`'s append-only rule) |
+| **C3** | **No exception for read-only roles**: `falsifier` / `gate-auditor` **get no write access** (breaking it turns `self-test.ps1`'s `F1` red) |
+| **C4** | The directory's `README.md` **must** declare "not a source of truth / not committed / conclusions must be written back to `docs/changes` and the ledger". **No such line => the directory must not be created** |
+| **C5** | The ignore rule goes into the **shipped** `.gitignore` (leading `/`), **not** `.git/info/exclude` (not shipped; one `git add -A` at an adopter would commit it) |
+| **C6** | **Deletable at close-out**: change record written + no "open" items left => deletable. Leaving it around slowly makes it look like a ledger |
+
+**Read-only roles' shared memory = read-only + orchestrator transcription**: they are **read-only, with no shell** (`§4.1`),
+so they cannot write any file. Their output is transcribed by the orchestrator into `.collab/<task-code>/<role>.md`, whose **first line must say**:
+
+```
+> Transcribed: written by the orchestrator from the <role>'s report; original text in this turn's delivery reply.
+```
+
+> ⚠️ **The most important boundary in this section: `.collab/` is scratch, not evidence.**
+> Files belonging to **other roles** that a read-only role finds in `.collab/` are **unverified input** to it and
+> **must not** be used as verdict evidence (`§2` exit evidence must come from **repo measurements** or **command stdout**).
+> Treating someone else's written conclusion as evidence is exactly what the `falsifier` role exists to prevent.
+
+**Known cost (explicit, not papered over)**: `.collab/` is **invisible across branches**, so two worktrees opening a same-named task
+on the same day will mix their scratch, and `§6.1`'s only backstop (`merge-tree` surfacing a conflict) **does not apply here**.
+Criterion: **do not open same-named tasks in two worktrees on the same day**; if it happens, rebuild from
+"conclusions written back to `docs/changes`" (which has a guard).
+
+> ⚠️ **The mechanical strength of this section (as-is)**: **C1–C4 and C6 are prompt-only**; only **C5 is mechanically enforced** by `.gitignore`.
+> "Should this directory be deleted" and "was scratch treated as evidence" **have no guard at all**, tracked as `GAP-047`.
+
 ---
 
 ## 5. Runtime artefact contract
