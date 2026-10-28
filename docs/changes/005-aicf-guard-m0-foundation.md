@@ -114,6 +114,56 @@
 
 ---
 
+## 四之二、第 2/2 次派发（`progress` 子命令 + 转发层 + 对拍，先写后填）
+
+> 本节于**动手前**立骨架：范围 + 准出判据先落盘，实测结果落地后回填（见「七、回填记录 · 第 2 次派发」）。
+> 第 1/2 次派发的 §三 表里的「实测」列**由本节接手回填**（同一个 M0，同一份记录）。
+
+### 4.2.1 范围（5 个提交，一单元一提交）
+
+| # | 单元 | 提交信息前缀 | 关键内容 |
+| --- | --- | --- | --- |
+| U1 | `internal/sha` 接管 + 补强 | `feat(aicf-guard): internal/sha — …` | 原工作树版本**只有 `Compare`**，而 `progress` 需要「先解析主干 full id、再判静默」的同款结构（`.ps1:345-348`）。补 `ResolveFull` / `EqualFull`，`Compare` 改为复用它们（单一实现）。新增 40 位非法 hex ⇒ false（原 `resolveFull` 会把 stderr 载荷原样返回成"full id"）。 |
+| U2 | `internal/mainline` 接管 + 补强 | `feat(aicf-guard): internal/mainline — …` | 补 `ResolveFull(repo, r Result)`：`rev-parse --verify <ref>^{commit}`，失败返回 ok=false（`.ps1:345-346` 的静默分支要有单一入口）。补「`origin/HEAD` 存在但目标是**非 commit 对象**」用例。 |
+| U3 | `internal/workspace` 接管 + 补强 | `feat(aicf-guard): internal/workspace — …` | 补 `ResolveAt`（显式 cwd，供单测与 `Run` 注入，避免 `os.Getwd`/`os.Executable` 的不可控输入）+ `FindPage`（两处候选，`.ps1:212-215`）。`.ps1` 的"自定位"是 `$PSCommandPath` 的**父目录**（`.ps1:185-187`）；二进制等价物是 `os.Executable` 的目录（已实现），此处只补测试钉住「**脚本路径** → ws」与「**其父目录**（= hooks 目录）→ ws」**两者等价**。 |
+| U4 | `internal/page` 接管 + 补强 | `feat(aicf-guard): internal/page — …` | **复核**工作树已有的两处修法：① `TestReadHeadMultipleMarkers` 的 `first1`/`second2` 非十六进制 ⇒ 改 `deadbee1`/`deadbee2`；② 新增 `TestReadHeadNonHexMarker` 钉住区别。**结论见回填**。补 `ReadPageName`（指针文件语义，`.ps1:199-206` 的三态：缺失 / 有名字 / 有但读不出）与 `.ps1` 未覆盖的边界：`()` 组合贪婪吞掉第二个标记（实测后决定是否加用例）。 |
+| U5 | `progress` 子命令 + `main.go` 接线 | `feat(aicf-guard): progress 子命令 — …` | 按 `Run(args, stdout, stderr, Deps)` 注入式设计（cmd 包）实现 §4.2.2 的**每个分支**；`--workspace` 旗标。 |
+| U6 | 对拍 harness（可注入 oracle） | `test(aicf-guard): 对拍 harness — …` | 场景清单 + `AICF_ORACLE` 注入；**无 oracle ⇒ SKIP 且 exit code 可区分**。 |
+| U7 | `.ps1` 薄转发层 + legacy 副本 | `refactor(hooks): check-progress.ps1 — …` | 调 `aicf-guard progress`；二进制缺失 ⇒ `exit 1`+stderr（fail-closed）。原实现移 `check-progress.legacy.ps1` 供对拍取 oracle。 |
+
+### 4.2.2 `aicf-guard progress` 分支契约（**逐条对齐 `.ps1`**，每行一个单测）
+
+| # | 条件 | `.ps1` 行 | 退出码 | stdout | stderr |
+| --- | --- | --- | --- | --- | --- |
+| P1 | 工作区解析失败（含 `--workspace` 指向非工作区） | 185-187 | 0 | 空 | 空 |
+| P2 | 指针文件**存在**但页名为空/全空白 | 199-206, 224-227 | 1 | 空 | `进度页指针异常：…` |
+| P3 | 无进度页（两处候选都不存在 / 指针指向不存在的页名） | 212-215, 233 | 0 | 空 | 空 |
+| P4 | git 不可用（launch 失败 ⇒ `Probe()` false） | 246-250 | 1 | 空 | `进度页守卫未运行：PATH 上的 git 不可用…` |
+| P5 | 金丝雀不可信（必败输入返回 0） | 265-269 | 1 | 空 | `…git 退出码不可信…` |
+| P6 | 无仓库候选 | 286-291 | 0 | 空 | 空 |
+| P7 | 主干三级全不中（unborn） | 314-340 | 0 | 空 | 空 |
+| P8 | 主干 full id 解析失败 / 为空 | 345-348 | 0 | 空 | 空 |
+| P9 | 页面无 `head <b>sha</b>` 标记（含 `<span>` 重构） | 375-376 | 0 | 空 | 空 |
+| P10 | 记录 SHA 解析不了 **或** ≠ 主干 full id | 396-397 | 0 | `{"decision":"block","reason":"…"}` | 空 |
+| P11 | 两侧 full id 相等 | 397 | 0 | 空 | 空 |
+
+**block 的 `reason` 逐字对齐 `.ps1:403-405`**（`$name`/`$recorded`/`$mainName`/`$headShort` 四个插值位）：
+`进度页落后于主干：<name> 记录的 HEAD 是 <recorded>，而 <mainName> 是 <headShort>。请先更新该页面再结束本轮——按 AGENTS.md 的交付约定，进度页要与代码同成熟度。需要同步的内容通常包括：状态条 head、用例数、覆盖率、GAP 台账状态与图例、以及新增的提交行。`
+
+**`headShort`** = `rev-parse --short <mainRef>` 的 `.Text`；**空则回退 full id**（`.ps1:349-350`）。
+
+### 4.2.3 准出判据（本单元）
+
+| # | 判据 | 命令 | 预期 |
+| --- | --- | --- | --- |
+| L1 | 静态检查 + 竞态 | `cd aicf-guard && go vet ./... && go test -race ./...` | 全 PASS |
+| L2 | 每个分支有单测 | `go test -race -run 'TestRun' -v ./internal/progress/` | P1–P11 各至少一格具名 |
+| L3 | 变异负向（判据有牙） | 逐包改坏实现 ⇒ 对应用例 FAIL（读数见回填） | FAIL 出现，且**只有**对应用例 FAIL |
+| L4 | 对拍 | `AICF_ORACLE=… go test -run Parallel -v` | **本机 SKIP**（无 PowerShell，`command -v pwsh`/`powershell` 均 exit 1）——**不得记 PASS** |
+| L5 | 转发层静态核对 | `grep` 关键分支 | 二进制缺失 ⇒ `exit 1` + stderr |
+
+---
+
 ## 五、下游同步与未竟 GAP（§3 第 5 段）
 
 ### 5.1 本单元触发的文档联动
@@ -148,4 +198,48 @@
 
 ## 七、回填记录
 
-> 待改动落地后回填本节。
+> 逐单元回填，**按提交顺序**。每条含：改了什么 / 为什么 / 验证命令与**真实读数** / 变异负向结果。
+> 环境（`2026-10-28T08:23Z` 实测）：`go1.27.3-X:nodwarf5 linux/amd64` · `git 2.56.0` ·
+> `command -v pwsh` ⇒ exit 1（**无**）· `command -v powershell` ⇒ exit 1（**无**）。
+
+### 7.1 U1 · `internal/sha`（补强 `ResolveFull` / `EqualFull`，`Compare` 改为复用）
+
+**改了什么**
+
+| 文件 | 改动 |
+| --- | --- |
+| `aicf-guard/internal/sha/sha.go` | 新增 `ResolveFull(repo, id) (string, bool)`（`.ps1:345-348` 的「主干 full id 解析失败 ⇒ 静默」需要一个**单一入口**，而原工作树版本只有 `Compare`，做不到"先解析、再判静默"）；新增 `EqualFull(a, b)`（两个**已解析** full id 的纯比较）；`Compare` 改为 `ResolveFull × 2 + EqualFull`。 |
+| `aicf-guard/internal/sha/sha_test.go` | 补 `ResolveFull`/`EqualFull` 用例 + 两格 PATH shim 用例。 |
+
+**为什么改（原实现的两处缺陷）**
+
+1. **API 形状不够**：`progress` 需要 `.ps1:345-348` 的语义——主干 full id 解析失败时**静默**（那与"页面落后"是两个不同的判定）。只有 `Compare` 时，调用方要么复制一份 `rev-parse` 调用（**第二处读 git 退出码**，违反 THE ONE RULE / D4），要么把"主干解析失败"错判成"页面落后"。故新增独立入口。
+2. **`resolveFull` 会把 stderr 载荷当 full id 返回**：`Result.Text` 在非 0 退出时是 `""`（`git.Checked` 的实现），但**在 exit 0 且 stdout 非 id 时**会把任意文本原样返回。`.ps1` 侧此路不可达（它的 `$recorded` 已被 HTML 正则约束为 hex），Go 侧补一条 `^[0-9a-f]{40}$` 形状断言是**零成本**的 fail-closed，且**不改判据**（判据仍是退出码）。
+   ⚠️ **残余如实记**：一个"永远 exit 0 + 打印**合法 40 位 hex 常量**"的 shim 仍能通过 `ResolveFull`——**任何只看输出的判据都拦不住它**。这条由上游 `Probe`+`Canary`（`.ps1:246-269`）拦，见 `TestResolveFullShimExitZeroWithJunk` 的注释。
+
+**正向实测**
+
+```
+$ cd aicf-guard && gofmt -l internal/sha/ && go vet ./internal/sha/
+（无输出）                                              # 格式与静态检查干净
+$ go test -race -count=1 ./internal/sha/
+ok  	aicf-guard/internal/sha	1.324s
+$ go test -count=1 -v ./internal/sha/ | grep -c '^--- PASS'
+18                                                      # 顶层用例 18 个（含 9 个 EqualFull 子用例）
+```
+
+**负向（变异验证——判据有牙）**：逐条改坏实现，确认**对应用例 FAIL**，然后还原。
+
+| 变异 | 改法 | 实测结果 |
+| --- | --- | --- |
+| M1 | 去掉 `^{commit}` peel（`id+"^{commit}"` → `id`） | `--- FAIL: TestResolveFullTreeIsNotACommit` · `TestResolveFullBlobIsNotACommit` · `TestResolveFullUnknownID` ⇒ `FAIL` |
+| M2 | 形状断言短路（`if !fullIDRe…` → `if false`） | 首轮 **存活（ok）** ⇒ **补了 `TestResolveFullShimExitZeroWithJunk`** ⇒ 复跑 `--- FAIL: TestResolveFullShimExitZeroWithJunk` |
+| M3 | `EqualFull` 把 empty==empty 判真 | `--- FAIL: TestEqualFull` |
+| M4 | `EqualFull` 改前缀比较（`a[:7]==b[:7]`） | 首轮 **存活（ok）** ⇒ **补了 `same-7-prefix` 子用例** ⇒ 复跑 `--- FAIL: TestEqualFull` |
+| M5 | `Compare` 只看"两侧都解析成功" | `--- FAIL: TestCompareDifferentCommits` |
+| M6 | `ResolveFull` 对空 id 返回 ok | `--- FAIL: TestResolveFullEmpty` |
+
+> **两格首轮存活是这次变异测试的真实收获**（D3 的价值正在此）：M2/M4 都不是"理论上的漏"，是**改坏后测试仍然全绿**。补的用例分别是 **PATH shim**（`.ps1:36-39` 记录的 V13 形态）与 **同 7 位前缀的两个合法 40 位 id**。
+
+**判据不变量对照（ADR §1.3）**：§1.3.5（SHA 双侧归一 full id 再比）✅ 由 `ResolveFull` 强制；§1.3.1（THE ONE RULE）✅ 本包不直接读 git 退出码，只经 `git.Checked`。
+
