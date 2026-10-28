@@ -291,3 +291,69 @@ ok  	aicf-guard/internal/mainline	1.159s
 > 改用 `strings.Clone(ref)`（保持导入有效）后重跑，`TestResolveOriginHead` FAIL。**build failed 不计入"判据有牙"**。
 > M6 是本组最重要的一条：它就是 `GAP-031` 的**回归形态**（守卫比对当前 HEAD 而非主干），有四格同时变红。
 
+### 7.3 U3 · `internal/workspace`（补 `ResolveFrom` + `FindPage`）
+
+**改了什么**
+
+| 文件 | 改动 |
+| --- | --- |
+| `workspace.go` | ① 新增 `ResolveFrom(flagWorkspace, projectDir, executable, workingDir)`——把 OS 派生的四个输入显式化；`Resolve` 改为读 OS 后**委托**给它（**只有一条实现**，`os.Executable`/`os.Getwd`/`os.Getenv` 在测试里不可注入，不抽出来则分层逻辑只能靠"测试二进制恰好放在哪"来测）。② 删除原 `resolveWorkspace`（其职责并入 `Resolve`）。③ 新增 `FindPage(ws, name)`：两处候选 `.ps1:212-215`，**ws 优先**，命中即停。 |
+| `workspace_test.go` | 补 `ResolveFrom` 3 格 + `TestResolveUsesProjectDir`（唯一触碰 OS 管线的一格）+ `FindPage` 6 格。 |
+
+**⚠️ 与 `.ps1` 的一处刻意差异（如实记，不藏）**
+
+`.ps1:185-187` 的工作区推导是**无条件上溯两级**（`Parent(Parent($PSCommandPath))`），**不检查 `.claude/` 是否存在**；
+Go 侧按 **ADR §2.3** 改为**上溯直到含 `.claude/`/`.agents/` 的目录**。两者在标准布局（`<ws>/.claude/hooks/<二进制>`）
+下**同解**；差异只在非标准位置：
+
+| 二进制位置 | `.ps1` 两级上溯 | Go 上溯 | 谁对 |
+| --- | --- | --- | --- |
+| `<ws>/.claude/hooks/aicf-guard` | `<ws>` | `<ws>` | 同 |
+| `<ws>/bin/aicf-guard` | `<ws>` 的上两级（**错**） | `<ws>` | **Go 对**——ADR §2.3 明列 `<ws>/bin/` 为合法位置 |
+| `<ws>/.agents/hooks/aicf-guard` | `<ws>` | `<ws>` | 同 |
+
+**判据**：ADR §2.3 第 3 层原文「若二进制在 `<ws>/.claude/hooks/` 或 `<ws>/.agents/hooks/` 或 `<ws>/bin/` 下，
+向上走到含 `.claude/` 或 `.agents/` 的目录」——`<ws>/bin/` 这一档**用两级上溯实现不了**，故差异是
+**ADR 要求的**，不是漂移。这处差异**不影响对拍**：`.ps1` 转发层仍从自身位置派生路径，对拍沙箱里两者都在
+`<ws>/.claude/hooks/` 下。
+
+**正向实测**
+
+```
+$ cd aicf-guard && gofmt -l internal/workspace/ ; go vet ./internal/workspace/
+（无输出）
+$ go test -race -count=1 -v ./internal/workspace/
+--- PASS: TestLayerFlagWins / TestLayerFlagInvalidFails / TestLayerFlagEmptyStringSkipped
+--- PASS: TestLayerCPD / TestLayerCPDInvalidSkipped / TestLayerExeWalkUp / TestLayerExeWalkUpAgentsDir
+--- PASS: TestLayerCWDWalkUp / TestLayerNoneResolve
+--- PASS: TestLayerPrecedenceFlagOverCPD / …CPDOverExe / …ExeOverCWD
+--- PASS: TestIsWorkspaceClaude / TestIsWorkspaceAgents / TestIsWorkspaceNeither / TestIsWorkspaceEmpty
+--- PASS: TestResolveRepoSelfHosted / …ProjectChild / …WSPrecedence / …None / …DotGitFileNotResolving
+--- PASS: TestResolveEndToEndFlagWithRepo / …FlagNoRepo / …FlagInvalid
+--- PASS: TestResolveFromExecutableIsAPath / TestResolveFromRepo / TestResolveFromAllEmpty     # 新增
+--- PASS: TestResolveUsesProjectDir                                                          # 新增
+--- PASS: TestFindPageAtWorkspace / …AtParentOfWorkspace / …WorkspaceWinsOverParent
+--- PASS: TestFindPageNone / …DirectoryCountsAsExisting / …EmptyInputs                        # 新增
+ok  	aicf-guard/internal/workspace	1.061s
+```
+
+**负向（变异验证）**
+
+| 变异 | 改法 | 实测结果 |
+| --- | --- | --- |
+| M1 | 无效 `--workspace` 回退到低层 | `--- FAIL: TestLayerFlagInvalidFails` · `TestResolveEndToEndFlagInvalid` |
+| M2 | repo 候选顺序反转（`project` 优先） | `--- FAIL: TestResolveRepoWSPrecedence` |
+| M3 | repo 候选不核对 `rev-parse --git-dir` 退出码 | 首轮改法 build failed（不可达代码）→ 改 `\|\| true`（**保留调用**）后 `--- FAIL: TestResolveRepoDotGitFileNotResolving`（GAP-009 那格） |
+| M4 | `FindPage` 只试 ws 候选（去掉 pre-move 布局） | `--- FAIL: TestFindPageAtParentOfWorkspace` |
+| M5 | `FindPage` 先试 parent（顺序反转） | `--- FAIL: TestFindPageWorkspaceWinsOverParent` |
+| M6 | `ResolveFrom` 把 `executable` 当目录 | **存活（ok）——等价变异，非缺口**。见下 |
+| M7 | `isWorkspace` 只认 `.claude`（丢 `.agents`） | `--- FAIL: TestLayerExeWalkUpAgentsDir` · `TestIsWorkspaceAgents` |
+
+> **M6 为什么是等价变异**：把**文件路径**当起点时，第一跳 `isWorkspace(<file>)` 必然失败（普通文件下不存在
+> `<file>/.claude`），于是同一轮就落到它的父目录——与正确实现的起点**逐跳相同**。两条路径只在"文件路径本身
+> 是不是工作区"这一问上不同，而该问**恒为否**。故它**不是**判据缺口；`TestResolveFromExecutableIsAPath`
+> 保留为「入口收的是**二进制路径**、不是目录」的契约文档。
+
+**判据不变量对照（ADR §1.3）**：§1.3.1（THE ONE RULE）✅ 仓库候选判定仍只经 `git.Checked(...).Exit == 0`；
+GAP-009（`.git` 存在 ≠ 是仓）✅ 由 M3 那格钉住；`.ps1:275-279`「ws 优先」✅ 由 M2 那格钉住。
+
