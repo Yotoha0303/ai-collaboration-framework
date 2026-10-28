@@ -94,17 +94,22 @@ func TestSubcommandPlaceholders(t *testing.T) {
 }
 
 // TestProgressSubcommandBelow: the dispatch reaches the progress package. An
-// explicit --workspace pointing at a non-workspace resolves to nothing, which
-// the contract maps to a silent exit 0 — so this proves wiring without
-// depending on the developer's own workspace state.
+// explicit --workspace pointing at a non-workspace is a REJECTED AUTHORITATIVE
+// OVERRIDE (ADR §2.3), which the contract maps to exit 1 + stderr — so this
+// proves wiring without depending on the developer's own workspace state.
+// (Before the qa-validator P1-1 / P2-1 fixes this path was a silent exit 0; see
+// docs/changes/005 §十.)
 func TestProgressSubcommandBelow(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"progress", "--workspace", t.TempDir()}, &stdout, &stderr)
-	if code != 0 {
-		t.Errorf("exit=%d want 0 (unresolvable workspace is a deliberate silence); stderr=%q", code, stderr.String())
+	if code != 1 {
+		t.Errorf("exit=%d want 1 (rejected --workspace is a notice); stderr=%q", code, stderr.String())
 	}
-	if stdout.Len() != 0 || stderr.Len() != 0 {
-		t.Errorf("stdout=%q stderr=%q; want both empty", stdout.String(), stderr.String())
+	if stdout.Len() != 0 {
+		t.Errorf("stdout=%q want empty", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "--workspace") {
+		t.Errorf("stderr=%q must name the rejected flag", stderr.String())
 	}
 }
 

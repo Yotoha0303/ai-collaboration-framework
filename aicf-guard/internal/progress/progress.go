@@ -176,6 +176,15 @@ func Run(args []string, stdout, stderr io.Writer, d Deps) int {
 	return decide(*wsFlag, stdout, stderr, d)
 }
 
+// msgWorkspaceFlagRejected is the notice for an explicit --workspace that is not
+// a workspace. It is not copied from the .ps1 (there is no --workspace flag
+// there): ADR §2.3 makes an explicit override AUTHORITATIVE, and an override
+// that is silently discarded leaves the caller believing the guard looked where
+// it was told to look. That is the "silently wrong" family (AGENTS.md §8), so it
+// takes the notice channel instead of the "not initialised" silence.
+const msgWorkspaceFlagRejected = "进度页守卫未运行：--workspace 指定的目录不是工作区（其中没有 .claude/ 或 .agents/）。" +
+	"显式覆盖被拒绝时不会回退到自动发现——本轮未检查进度页是否落后。请检查路径，或去掉 --workspace 改用自动发现。"
+
 // decide is the branch sequence. It returns the exit code and writes at most one
 // line to exactly one channel, matching the .ps1's mutually exclusive branches.
 func decide(wsFlag string, stdout, stderr io.Writer, d Deps) int {
@@ -185,6 +194,14 @@ func decide(wsFlag string, stdout, stderr io.Writer, d Deps) int {
 	// `.claude/` is the pointer-absent + no-page silence. Same observable.
 	wsRes := d.Resolve(wsFlag)
 	if wsRes.Workspace == "" {
+		// ...EXCEPT when the caller named the workspace explicitly. Discovery
+		// finding nothing is "not initialised"; an explicit override finding
+		// nothing is a rejected instruction, and staying silent about it would
+		// make it indistinguishable from a successful run (ADR §2.3).
+		if wsFlag != "" {
+			fmt.Fprintln(stderr, msgWorkspaceFlagRejected)
+			return 1
+		}
 		return 0
 	}
 

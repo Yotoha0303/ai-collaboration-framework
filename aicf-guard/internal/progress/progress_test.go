@@ -393,6 +393,9 @@ func TestRunNeverReturnsTwo(t *testing.T) {
 			d.ReadPageName = func(string) page.NameResult { return page.NameResult{Fault: true, Name: page.DefaultPageName} }
 		}},
 		{"notice (git unusable)", nil, func(d *Deps) { d.Probe = func() bool { return false } }},
+		{"notice (rejected --workspace)", []string{"--workspace", "/nope"}, func(d *Deps) {
+			d.Resolve = func(string) workspace.Result { return workspace.Result{} }
+		}},
 		{"block", nil, func(d *Deps) {
 			d.ReadHead = func(string) (string, bool) { return "0000000", true }
 			d.ResolveFull = func(repo, id string) (string, bool) {
@@ -418,6 +421,40 @@ func TestRunNeverReturnsTwo(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRunWorkspaceFlagRejectedIsNotice covers the 总控 ruling recorded in
+// record.md (qa-validator P2-1): an explicit --workspace that is not a
+// workspace is AUTHORITATIVE (ADR §2.3) and its rejection must be visible.
+// Discovery finding nothing stays silent — the two cases are asserted together
+// here so a future edit cannot collapse them back into one.
+func TestRunWorkspaceFlagRejectedIsNotice(t *testing.T) {
+	t.Run("explicit --workspace that resolves to nothing is a notice", func(t *testing.T) {
+		d := stubDeps()
+		d.Resolve = func(flag string) workspace.Result {
+			if flag == "" {
+				t.Fatal("--workspace was not passed through to Resolve")
+			}
+			return workspace.Result{}
+		}
+		code, out, errOut := runOnce(t, []string{"--workspace", "/not/a/ws"}, d)
+		if code != 1 {
+			t.Errorf("exit=%d want 1 (rejected override is a notice)", code)
+		}
+		if out != "" {
+			t.Errorf("stdout=%q want empty", out)
+		}
+		if errOut != msgWorkspaceFlagRejected+"\n" {
+			t.Errorf("stderr=%q want %q", errOut, msgWorkspaceFlagRejected+"\n")
+		}
+	})
+
+	t.Run("discovery that resolves to nothing stays silent", func(t *testing.T) {
+		d := stubDeps()
+		d.Resolve = func(string) workspace.Result { return workspace.Result{} }
+		code, out, errOut := runOnce(t, nil, d)
+		wantSilent(t, "no --workspace, nothing discovered", code, out, errOut)
+	})
 }
 
 func TestRunHelpExitsZero(t *testing.T) {
