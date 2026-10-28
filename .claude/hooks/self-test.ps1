@@ -1178,13 +1178,13 @@ if ($entryPresent.Count -eq 0) {
 # 页名由指针文件一行指定（页名的唯一事实源）
 $ptrPath = Join-Path $RepoRoot '.claude/progress-page.txt'
 $pagePath = $null
-if (Test-Path -LiteralPath $ptrPath) {
+if (Test-AFile $ptrPath) {
     $pn = (Get-Content -LiteralPath $ptrPath -Raw -ErrorAction SilentlyContinue)
     if ($pn) { $pn = $pn.Trim() }
     if ($pn) { $pagePath = Join-Path $RepoRoot $pn }
 }
 
-if (-not $pagePath -or -not (Test-Path -LiteralPath $pagePath)) {
+if (-not $pagePath -or -not (Test-AFile $pagePath)) {
     # 页面不存在 = 尚未初始化，无判据可言（与守卫同口径，AGENTS.md §5）。**不算失败**。
     # ⇒ 这个 SKIP 覆盖 **4 格**：`E1` / `E3` / `E4` / `E2`（它们全在下面的 `else` 里，
     #    页面缺失时**一格都不会跑**）。`E5` **不在**这里 —— 它刻意放在块外（见下方注释）。
@@ -1513,6 +1513,61 @@ Assert-Cell -Name "C7 .ps1 无「仅靠大小写区分」的变量名（扫到 $
     -Actual ([pscustomobject]@{ Exit = $V_CASE_HITS.Count; Stdout = ($V_CASE_HITS -join '; ') }) `
     -Predicate { $V_CASE_HITS.Count -eq 0 -and $V_Ps1Count -gt 0 }
 
+# --- C8 · 流程记忆的索引与文件一致（`2026-10-26`，issue #62）
+# 为什么要有它：`docs/procedures/INDEX.md` 是**路由**——它列出的每个流程文件都必须真实存在。
+# 否则读者按索引去读，读到的是**幻影路径**（本框架真实抓到过这一族：`GAP-016`）。
+# 判据：索引里 `<流程>.md` / `<流程>-cases.md` 的每个引用，`Test-AFile` 必须为真。
+$procIdx = Join-Path $RepoRoot 'docs/procedures/INDEX.md'
+# 索引不存在 = 本工作区没装流程记忆（采用方的合法状态）⇒ 无判据可言，计 1 格 SKIP。
+if (-not (Test-AFile $procIdx)) {
+    $script:Skip += 1
+    "  SKIP  C8：docs/procedures/INDEX.md 不存在（计 1 格）"
+} else {
+    $procRefs = @(
+        [regex]::Matches([System.IO.File]::ReadAllText($procIdx), '\]\(([\w.-]+\.md)\)') |
+            ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
+    )
+    $procBad = @($procRefs | Where-Object { -not (Test-AFile (Join-Path $RepoRoot ('docs/procedures/' + $_))) })
+    Assert-Cell -Name "C8 流程索引引用的文件都存在（$($procRefs.Count) 个引用）" `
+        -Expect '缺失 = 0 且引用数 > 0' `
+        -Actual ([pscustomobject]@{ Exit = $procBad.Count; Stdout = ($procBad -join '; ') }) `
+        -Predicate { $procBad.Count -eq 0 -and $procRefs.Count -gt 0 }
+}
+
+# --- C9 · 每个案例都含非空的「前提」一节（`2026-10-26`，issue #62）
+# 为什么要有它：案例库的可用性判据是「前提清单逐条核对」。**没有前提的案例无法被判定可行与否**，
+# 它只会变成"读到了就照做"——而那正是 issue #61 要防的形态。
+# 判据：每个 `### 案例` 段落里至少有一行 `- [ ]`（可机械核对的条目）。
+# ⚠️ **必须直接扫目录，不能用 `Get-RepoFiles`**（它在本仓走 `git ls-files`，只列**已跟踪**文件）：
+# 新建的案例库在 `git add` 之前是 untracked ⇒ 本格会 SKIP ⇒ 「没扫」冒充「没问题」（D3）。
+# 判据要的是「目录里有没有案例库」，那与索引无关。
+$caseDir = Join-Path $RepoRoot 'docs/procedures'
+$caseFiles = @()
+if (Test-Path -LiteralPath $caseDir) {
+    $caseFiles = @(Get-ChildItem -LiteralPath $caseDir -Filter '*-cases.md' -File -Force -ErrorAction SilentlyContinue |
+        ForEach-Object { 'docs/procedures/' + $_.Name })
+}
+if ($caseFiles.Count -eq 0) {
+    $script:Skip += 1
+    "  SKIP  C9：docs/procedures/ 下没有案例库文件（计 1 格）"
+} else {
+    $caseBad = @()
+    foreach ($cf in $caseFiles) {
+        $cfp = Join-Path $RepoRoot $cf
+        if (-not (Test-AFile $cfp)) { continue }
+        $ctxt = [System.IO.File]::ReadAllText($cfp)
+        # 按 `### 案例` 切段；每段必须含至少一条 `- [ ]`
+        $segs = @([regex]::Split($ctxt, '(?m)^### 案例') | Select-Object -Skip 1)
+        if ($segs.Count -eq 0) { $caseBad += "$cf 没有任何「### 案例」段落"; continue }
+        for ($k = 0; $k -lt $segs.Count; $k++) {
+            if ($segs[$k] -notmatch '(?m)^\s*-\s*\[ \]') { $caseBad += "$cf 第 $($k+1) 个案例缺「前提」清单（无 '- [ ]' 行）" }
+        }
+    }
+    Assert-Cell -Name "C9 每个案例都含可核对的前提清单（$($caseFiles.Count) 个案例文件）" `
+        -Expect '违规 = 0 且案例文件数 > 0' `
+        -Actual ([pscustomobject]@{ Exit = $caseBad.Count; Stdout = ($caseBad -join '; ') }) `
+        -Predicate { $caseBad.Count -eq 0 -and $caseFiles.Count -gt 0 }
+}
 # --- C6 · 全仓「格数总数」陈述一致（2026-10-15 补；**口径经两次收窄**）
 # 为什么要有它：格数被抄在 8 个文件里，**没有任何东西让它们同步** —— 同一轮里我因此错了 4 次。
 #
@@ -1545,7 +1600,12 @@ foreach ($f in @(Get-RepoFiles '*.md')) {
 # `+1` 仍是 C6 自己（此刻尚未计入）。判据：`Pass + Fail + Skip + 1` 必须等于文档里抄写的总格数。
 # （`C2b` 在引导未装时**计 SKIP**，故不进这里的额外项——它与其它格走同一条分母。）
 $c2bRan = 0
-$actualCells = $script:Pass + $script:Fail + $script:Skip + 1 + $c2bRan   # +1 = C6 自己这一格（此刻尚未计入）$staleTotals = @($foundTotals.Keys | Where-Object { $_ -ne $actualCells } | Sort-Object)
+$actualCells = $script:Pass + $script:Fail + $script:Skip + 1 + $c2bRan   # +1 = C6 自己这一格（此刻尚未计入）
+# ⚠️ **这一行必须独立成行**（`2026-10-26`，`gate-auditor` B2 抓到）：此前它被上一行的行尾注释吞掉，
+# `$staleTotals` **从未被赋值** ⇒ `$null.Count` 在无 `Set-StrictMode` 时为 0 ⇒ 谓词恒真 ⇒ **C6 变成死判据**，
+# 任何数字都对不出红。**这正是本文件反复警告的「判据夹缝」**，而且它恰好在"管所有格数陈述"的那一格上。
+# 教训：判据脚本的**赋值语句**不得与其他语句挤在同一行——注释会静默吃掉它，而症状是"看起来全绿"。
+$staleTotals = @($foundTotals.Keys | Where-Object { $_ -ne $actualCells } | Sort-Object)
 # ⚠️ 谓词里的 `$foundTotals.Count -gt 0` 与 `$staleTotals.Count -eq 0` **必须同时成立**：
 # 枚举塌空时 `$foundTotals` 是**空的**，而"没有任何总数陈述与 $actualCells 不符"**恒真** ⇒
 # 本格会以 `实际 34；文中出现 `（出现集为空）**静默全绿** —— 那正是本次要修的病。
