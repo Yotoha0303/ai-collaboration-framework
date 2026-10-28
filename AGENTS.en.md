@@ -583,7 +583,7 @@ against it.
 
 > ⚠️ **The mechanical strength of this section (as-is)**: **prompt-only**. No `PreToolUse` guard checks the in-flight count,
 > so **over-dispatch and compliance are observationally identical** (`GAP-017` / `GAP-024` family).
-> The guard's spec and known blockers are in ADR-002 §6.3; **not wired** (`GAP-047`).
+> The guard's spec and known blockers are in ADR-002 §6.3; **not wired** (`GAP-049`).
 
 ### 4.4 Out-of-repo collaboration directory (parallel subagents' shared scratch, **not committed**)
 
@@ -635,7 +635,7 @@ Criterion: **do not open same-named tasks in two worktrees on the same day**; if
 "conclusions written back to `docs/changes`" (which has a guard).
 
 > ⚠️ **The mechanical strength of this section (as-is)**: **C1–C4 and C6 are prompt-only**; only **C5 is mechanically enforced** by `.gitignore`.
-> "Should this directory be deleted" and "was scratch treated as evidence" **have no guard at all**, tracked as `GAP-047`.
+> "Should this directory be deleted" and "was scratch treated as evidence" **have no guard at all**, tracked as `GAP-049`.
 
 ---
 
