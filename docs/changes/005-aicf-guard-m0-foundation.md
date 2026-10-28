@@ -640,3 +640,71 @@ echo "exit=$?"     # 0 = 逐字节一致（准出）；1 = 有差异（阻断）
 **判据不变量对照（ADR §2.5 / §6.1）**：对拍**未满足**（不是"不适用"）——按 `AGENTS.md` §2，对应物存在、
 判据存在、但**本机无运行时**，故记为「未验证 + 原因」，交三跳链裁决。
 
+### 7.7 U7 · `.claude/hooks/check-progress.ps1` → 薄转发层
+
+> ⚠️ **本机无 PowerShell，本节全部结论均为静态核对。** 不得读成"已跑通"。
+
+**改了什么**
+
+| 文件 | 动作 |
+| --- | --- |
+| `.claude/hooks/check-progress.legacy.ps1` | **新增**：迁移前原实现，**逐字节相同**（`git hash-object` 两侧同为 `2b1908e8…`，见下）。它是**对拍的 oracle**，**不接任何 hook**。 |
+| `.claude/hooks/check-progress.ps1` | **重写为转发层**（413 → 98 行；`git diff --stat` = `85 insertions(+), 388 deletions(-)`）：定位同目录 `aicf-guard`(/.exe) → `& $bin progress --workspace $ws` → `exit $LASTEXITCODE`。文件头保留：发布契约、THE ONE RULE 与"失败即静默"的警告、被删除的 PowerShell 特有理由、两用例验证要求。 |
+
+**legacy 逐字节性（oracle 可信的前提）**
+
+```
+$ git show HEAD:.claude/hooks/check-progress.ps1 | git hash-object --stdin
+2b1908e8e30272f80eb376135c0db75a873a301b
+$ git hash-object .claude/hooks/check-progress.legacy.ps1
+2b1908e8e30272f80eb376135c0db75a873a301b          # 同一 blob ⇒ 同一份实现
+$ wc -l .claude/hooks/check-progress.legacy.ps1
+413 .claude/hooks/check-progress.legacy.ps1
+```
+
+**静态核对（本机唯一能做的验证）**
+
+| 判据 | 命令 | 实测 |
+| --- | --- | --- |
+| 二进制缺失 ⇒ **不静默** | `grep -n -A1 '缺失（aicf-guard'` | `[Console]::Error.WriteLine("进度页守卫未运行：…缺失…")` 紧接 `exit 1` ✅ |
+| 转发层**无** `exit 0` 执行路径（失败绝不 open） | `grep -v '^\s*#' … \| grep -c 'exit 0'` | `0` ✅ |
+| 退出码 ⊆ adapter 覆盖（self-test 的 **D3** 格） | `grep -o 'exit\s*[0-9]*'` | 执行路径只有 `1`（外加 `exit $LASTEXITCODE` 透传 0/1）⇒ D3 仍 **PASS** ✅ |
+| 守卫逻辑已**完全**移出（不留第二实现，D4） | `grep -c 'Invoke-GitChecked\|symbolic-ref\|progress-page.txt\|\[regex\]::Match'` | `0` ✅ |
+| 工作区推导仍按**脚本自身位置**（不依赖 CWD） | 读码 | `Split-Path -Parent` 两级，与 legacy 第 185 行同源 ✅ |
+| 二进制不入库（ADR §6.8） | `go build -C aicf-guard -o ../.claude/hooks/aicf-guard .` 后 `git status --porcelain` | 只出现 ` M check-progress.ps1` 与 `?? check-progress.legacy.ps1`，**二进制不出现** ✅ · `git check-ignore -v` 命中 `.gitignore:36` |
+
+**oracle 怎么取回（三法，任一等价）**
+
+```bash
+git show 8e744cd:.claude/hooks/check-progress.ps1 > /tmp/check-progress.ps1   # ① 迁移前的提交
+git show HEAD~1:.claude/hooks/check-progress.ps1 > /tmp/check-progress.ps1    # ② 上一个提交
+cp .claude/hooks/check-progress.legacy.ps1 /tmp/check-progress.ps1           # ③ 仓内留下的副本
+```
+
+**未做的（有意，附理由）**
+
+1. **不动 `.claude/settings.json` / `.agents/hooks.json`** —— 切 hook 配置是 **M4**（ADR §3），且本机也无
+   PowerShell，改了无法验证。故本提交**不声称 Linux 上守卫已恢复**——它仍是 `powershell …`，仍 exit 127。
+2. **不改 `self-test.ps1`** —— 它的 A 组现在指向**转发层**，在**有二进制**的机器上行为不变（转发层透传），
+   在**无二进制**的机器上会走 `exit 1` notice（A1/A4/A8/A10/A12/A13 会 FAIL，A2/A3/A5/A7 仍 PASS）。
+   **这是既有格子的预期变化**，应由下一轮在有 PowerShell 的机器上实测后裁决，不在本次"顺手改尺子"（D3：实现方不自审判据）。
+3. **`README.md` / `hooks/README.md` 的描述未改** —— 它们描述的是**规则**（权威源在 `AGENTS.md` §5），
+   而 §5 未变。转发层是**实现细节**，已在文件头写明。
+
+**⚠️ 交给门禁的残余（本单元发现，**不自行拍板**）**
+
+ADR §3 规定「二进制缺失 ⇒ 按原『git 不可用』分支处置（`exit 1` + stderr）」。本次**照此实现**。但该分支在
+**Antigravity 侧会被降级**：`.agents/hooks/stop-adapter.ps1:54-59` 把 `exit≠0 + stderr` 转成非阻断的
+`{"decision":"continue"}` ⇒ **在 Antigravity 上删掉二进制，守卫会静默退役（只留一句 notice）**。
+
+| 候选处置 | 后果 | 谁定 |
+| --- | --- | --- |
+| 维持现状（照 ADR） | Antigravity 侧缺二进制 = 非阻断 | 本单元默认 |
+| 用 `{0,1}` 之外的退出码（如 2）并让 adapter 视为致命 | 更强，**但** self-test 的 **D3 格会 FAIL**（adapter 未覆盖 2），且**改发布契约** | **待总控 / `gate-auditor` 裁定**——属契约变更，不是实现细节 |
+
+> 我**先按 ADR 实现、再上报**，而不是按自己的判断改成 exit 2：ADR 是 Accepted 的，改它要走 ADR 修订；
+> 且 exit 2 会让 D3 格立刻变红——那是一个**必须由门禁看见**的信号，不该由实现方顺手抹平。
+
+**判据不变量对照（ADR §3 薄转发层契约）**：fail-closed ✅（静态核对第 1、2 行）；不静默 ✅；
+守卫逻辑唯一实现 ✅（D4）；**"二进制缺失"这一格的实机验证 = 未做**（无 PowerShell）。
+
