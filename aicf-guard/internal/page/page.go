@@ -99,6 +99,27 @@ type NameResult struct {
 // would silently swap in the default page name — the exact failure this check
 // exists to prevent.
 //
+// # BOM
+//
+// A leading UTF-8 BOM (U+FEFF) is stripped BEFORE trimming. This is not
+// cosmetic and not an "improvement": it restores agreement with the legacy
+// implementation. check-progress.ps1:199-206 reads the pointer with
+//
+//	Get-Content -Raw <ptr>
+//
+// and PowerShell's Get-Content strips a leading BOM while decoding; Go's
+// os.ReadFile hands back the raw bytes, and U+FEFF is NOT in unicode.IsSpace, so
+// strings.TrimSpace leaves it in place. Without this strip the name becomes
+// "\uFEFFproject-progress.html", matches neither FindPage candidate, and the
+// guard retires SILENTLY (measured 2026-10-28, GAP-047: exit 0 / empty / empty
+// on a page that was plainly stale). That is a real-world input, not a corner
+// case: this workspace migrated from Windows, where Notepad / VS Code
+// "UTF-8 with BOM" and PowerShell 5.1's Out-File write the BOM by default — one
+// save of the pointer from any of them and the guard is blind forever.
+//
+// Only the LEADING BOM is stripped (what the decoder would consume). A BOM in
+// the middle is part of the name, exactly as it would be for Get-Content.
+//
 // Trim matches PowerShell's String.Trim(): whitespace on both ends, including
 // the trailing newline a one-line file carries; it does NOT split on inner
 // newlines, so a two-line pointer is a name with a newline in it — which then
@@ -113,8 +134,20 @@ func ReadPageName(pointerPath string) NameResult {
 		// The pointer exists (or is otherwise unreadable): a real fault.
 		return NameResult{Name: DefaultPageName, Fault: true}
 	}
-	if name := strings.TrimSpace(string(data)); name != "" {
+	if name := trimPointerName(string(data)); name != "" {
 		return NameResult{Name: name, Fault: false}
 	}
 	return NameResult{Name: DefaultPageName, Fault: true}
+}
+
+// utf8BOM is the UTF-8 encoding of U+FEFF, the byte prefix a BOM-writing editor
+// leaves in front of the file's real content.
+const utf8BOM = "\ufeff"
+
+// trimPointerName strips ONE leading BOM (see the BOM note on ReadPageName) and
+// then trims surrounding whitespace. Factored out so the two steps are named and
+// separately testable: the BOM strip is a parity fix, the TrimSpace is the
+// long-standing behaviour.
+func trimPointerName(s string) string {
+	return strings.TrimSpace(strings.TrimPrefix(s, utf8BOM))
 }

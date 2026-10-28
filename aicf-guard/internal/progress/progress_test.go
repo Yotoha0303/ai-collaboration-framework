@@ -534,6 +534,31 @@ func TestRunSandboxBranches(t *testing.T) {
 		}
 	})
 
+	// GAP-047 (qa-validator P1-3): a pointer saved as "UTF-8 with BOM" must still
+	// find the page. The page here is plainly STALE, so the correct answer is a
+	// block; the defect was exit 0 / empty / empty.
+	t.Run("P2b BOM pointer still finds the page and blocks", func(t *testing.T) {
+		sb.writePage(t, "<html><body><div>head <b>0000000</b></div></body></html>")
+		sb.writePointer(t, "\ufeffproject-progress.html\n")
+		code, out, errOut := runReal(t, sb.dir)
+		if code != 0 || errOut != "" || !strings.Contains(out, `"decision":"block"`) {
+			t.Errorf("exit=%d stdout=%q stderr=%q; want 0 + block (BOM must not retire the guard)", code, out, errOut)
+		}
+		sb.writePointer(t, "project-progress.html\n")
+	})
+
+	// GAP-047, the other half: a pointer that holds ONLY a BOM names nothing, so
+	// it lands on the "pointer exists but yields no name" fault — a notice, never
+	// the silent default-page fallback (GAP-002).
+	t.Run("P2c BOM-only pointer is a notice, not silence", func(t *testing.T) {
+		sb.writePointer(t, "\ufeff\n")
+		code, out, errOut := runReal(t, sb.dir)
+		if code != 1 || out != "" || errOut != msgPointerFault+"\n" {
+			t.Errorf("exit=%d stdout=%q stderr=%q; want 1 + the pointer-fault notice", code, out, errOut)
+		}
+		sb.writePointer(t, "project-progress.html\n")
+	})
+
 	t.Run("A5 <span> restructure is silent (GAP-025 residual, pinned)", func(t *testing.T) {
 		sb.writePage(t, `<div>head <span>0000000</span></div>`)
 		code, out, errOut := runReal(t, sb.dir)

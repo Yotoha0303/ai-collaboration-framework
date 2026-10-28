@@ -253,4 +253,51 @@ func TestReadPageNameInnerNewlineKept(t *testing.T) {
 	}
 }
 
+// TestReadPageNameStripsLeadingBOM pins GAP-047: the pointer is read by
+// Get-Content -Raw in the legacy .ps1, and PowerShell strips a leading UTF-8 BOM
+// while decoding. Go's os.ReadFile returns the raw bytes, and U+FEFF is not in
+// unicode.IsSpace, so a pointer saved as "UTF-8 with BOM" (the default of
+// Notepad / VS Code / PowerShell 5.1's Out-File — this workspace migrated from
+// Windows) used to yield a name no FindPage candidate could ever match, retiring
+// the guard SILENTLY on a plainly stale page.
+//
+// The BOM-only case is NOT the same as the name case and must stay on the fault
+// branch: the pointer exists but names nothing, so the reader has to be told
+// (GAP-002) rather than being given the default page by a silent fallback.
+func TestReadPageNameStripsLeadingBOM(t *testing.T) {
+	cases := []struct {
+		name      string
+		content   string
+		wantName  string
+		wantFault bool
+	}{
+		{"bom + name", "\ufeffproject-progress.html\n", "project-progress.html", false},
+		{"bom + name, no newline", "\ufeffproject-progress.html", "project-progress.html", false},
+		{"bom + spaces + name", "\ufeff  status-2026.html \r\n", "status-2026.html", false},
+		{"two boms strip only the first", "\ufeff\ufeffx.html", "\ufeffx.html", false},
+		{"bom only", "\ufeff", page.DefaultPageName, true},
+		{"bom + whitespace only", "\ufeff \n", page.DefaultPageName, true},
+		// Parity reasoning (not measured here — no PowerShell on this machine):
+		// Get-Content detects the BOM only at byte offset 0, so a BOM after
+		// whitespace is decoded as an ordinary U+FEFF and stays in the name
+		// (which then names no real file).
+		{"whitespace before bom is kept", " \ufeffx.html", "\ufeffx.html", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			p := filepath.Join(t.TempDir(), "progress-page.txt")
+			if err := os.WriteFile(p, []byte(c.content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			got := page.ReadPageName(p)
+			if got.Fault != c.wantFault {
+				t.Errorf("Fault=%v want %v (content=%q)", got.Fault, c.wantFault, c.content)
+			}
+			if got.Name != c.wantName {
+				t.Errorf("Name=%q want %q (content=%q)", got.Name, c.wantName, c.content)
+			}
+		})
+	}
+}
+
 const fullSHA = "0123456789abcdef0123456789abcdef01234567"
