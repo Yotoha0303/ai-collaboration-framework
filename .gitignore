@@ -41,3 +41,14 @@
 /aicf-guard/aicf-guard.exe
 /.claude/hooks/aicf-guard
 /.claude/hooks/aicf-guard.exe
+
+# Python build & cache artifacts
+__pycache__/
+*.py[cod]
+*.class
+*.egg-info/
+dist/
+build/
+packages/agent-guard/dist/
+packages/agent-guard/build/
+packages/agent-guard/*.egg-info/
