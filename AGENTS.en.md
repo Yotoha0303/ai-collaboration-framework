@@ -463,6 +463,8 @@ authoritative **in the registry text** and is not repeated here.
 | 10 | `rca-investigator` | Incident investigation, retrospective | Scene analysis, 5 Whys, timeline reconstruction, actions | ✅ Instantiated (**baseline contract**) |
 | 11 | `contract-dev` | Development, local verification, code review | Production Solidity, EVM safety patterns, interface freeze, gas | ✅ Instantiated (**domain role**) |
 | 12 | `frontend-dev` | Development, local verification, code review | Production React/Next.js/TS, data wiring, accessibility | ✅ Instantiated (**domain role**) |
+| 13 | `spec-auditor` | Requirement, design, dev, release | Cross-tier semantic diff, contract alignment, anti-downgrade/swallow/mock | Instantiated (**read-only**) |
+| 14 | `governance-auditor` | Inception, release, ops, decommission | Compliance review, SoD separation, licenses, Tombstone registry | Instantiated (**read-only**) |
 
 > **"Baseline contract" = the minimal set covering the full lifecycle** (user TODO item 3:
 > **basic volume is enough, covering the full lifecycle**). They turn the registry's
@@ -503,8 +505,8 @@ authoritative **in the registry text** and is not repeated here.
 > is at the **workspace root**, so the session must launch from the workspace root (§0.0) —
 > **with the wrong launch directory, no implementation can be dispatched**.
 
-**Collaboration discipline**: `falsifier` and `gate-auditor` are **always read-only and
-independent of the implementing party** — you may not audit your own criterion.
+**Collaboration discipline**: `falsifier`, `gate-auditor`, `spec-auditor`, and `governance-auditor` are **always read-only and
+independent of the implementing party** — you may not audit your own implementation or criterion.
 **The criterion is "no shell"**: `tools` is **`Read` / `Grep` / `Glob` only**, **no shell of any
 kind** — **shell is itself a write backdoor** (`Set-Content` etc. can write to disk and delete
 files), so blocking `Write`/`Edit` alone **does not block it**.
@@ -519,6 +521,23 @@ back **real stdout** for them to judge against.
 
 The three toolchains do not block one another: when dispatching a new feature stage by stage,
 **frontend and backend may start in parallel once the 01-stage interface is frozen**.
+
+#### 4.1.1 Vertical 8-Tier System Hierarchy x Horizontal 11-Stage Lifecycle Role Dual-Routing Matrix
+
+Once the orchestrator completes the grid location of "vertical system tier x horizontal lifecycle stage", dispatching a solo writer role is prohibited. The dual read-only audit sandbox and exit fact anchor must be activated per the following matrix:
+
+| Vertical System Tier | Core Horizontal Stages | Primary Producer Role | Dual Read-Only Audit Role | Exit Fact Anchor |
+| :--- | :--- | :--- | :--- | :--- |
+| Rule & Organization | Inception, Release, Decommission | `biz-strategist` | `governance-auditor` | Compliance baseline, SoD ledger & SCA license report |
+| Business | Inception, Requirement, Iteration | `pm-spec-driver` | `spec-auditor` | State-machine contract, quantified REQ- checklist & edge cases |
+| System | Design, Release, Iteration | `system-architect` | `spec-auditor` | Architecture decision record (ADR-), schema & circuit breakers |
+| Data | Design, Development, Decommission | `data-engineer` | `governance-auditor` | Migration scripts (MIG-), masking plan & deletion audit log |
+| Code | Development, Testing, Iteration | `backend-dev` / `frontend-dev` | `spec-auditor` | Requirement line-number bi-directional anchor map, substantive code |
+| Runtime | Testing, Deployment, Operations | `qa-validator` / `sre-operator` | `falsifier` | Negative fault injection log, chaos drill report & immutable digest |
+| Experience | Incident, Retrospective, Decommission | `rca-investigator` | `gate-auditor` | Root-cause review (INC-), ADR updates & Tombstone registry |
+
+- **Physical sandbox constraint**: All dual audit roles strictly inherit the read-only sandbox enclosure (`Read`, `Grep`, `Glob` only, stripped of all Shell and Write tools). Upon detecting defects, they emit blocking decisions (`decision:block`) and commands to run on their behalf.
+- **Deterministic tooling**: At code and system tiers, `aicf-guard spec-trace` automatically scans AST and pattern anchors to eliminate mock or degraded implementations.
 
 ---
 
@@ -555,6 +574,25 @@ against it.
 > The framework holds that this must be paid — **developing across a gate (02 first, 03 later) is more
 > expensive than three extra hops**: what the former produces is a criterion you cannot trust, and an
 > untrustworthy criterion goes on **looking correct** in every later stage.
+
+#### 4.2.1 Three High-Drift Inflection Points Collaboration Checkpoint Protocols
+
+Across horizontal lifecycle advances, the following three inflection points most prone to stage cross-leakage and AI self-exaggeration must enforce adversarial dual-role collaboration:
+
+1. **Inflection Point 1: From "Requirement" to "Design" (Business Tier -> System Tier)**
+   - **Producer**: `pm-spec-driver` outputs requirement specification and acceptance checklist.
+   - **Adversarial Auditor**: `spec-auditor` upfront boundary exhaustive audit.
+   - **Protocol**: After `pm-spec-driver` completes output, awakening `system-architect` directly is strictly forbidden. The orchestrator must awaken read-only `spec-auditor` for boundary exhaustive verification. Any requirement lacking concurrency conflict policy, timeout retry cap, idempotency key source, or exception truncation must be blocked with a veto (`decision:block`), forcing upstream refinement.
+
+2. **Inflection Point 2: From "Development" to "Testing/Release" (Code Tier -> Runtime Tier)**
+   - **Producer**: `backend-dev` / `frontend-dev` submit code and unit tests.
+   - **Adversarial Auditor**: `spec-auditor` semantic fidelity audit + `falsifier` negative verification.
+   - **Protocol**: After code submission, the orchestrator dispatches two read-only audit tasks in parallel: `spec-auditor` compares code against requirements/`ADR-` line by line to detect silent downgrading (in-memory variable replacing persistence), exception swallowing (fail-open), and hollow mock implementations (TODO/mock); `falsifier` crafts fault injection commands for assertions. Only when `spec-auditor` confirms zero degraded implementations and `falsifier` verification passes on real stdout can `gate-auditor` proceed to adjudication.
+
+3. **Inflection Point 3: From "Incident/Retrospective" to "Iteration/Decommission" (Runtime/Data Tier -> Experience Tier)**
+   - **Producer**: `rca-investigator` / `sre-operator` produce incident analysis and architectural action items.
+   - **Adversarial Auditor**: `governance-auditor` Tombstone registry check + `gate-auditor` gate verification.
+   - **Protocol**: Following incident retrospective, `governance-auditor` verifies D4 discipline and decommissioning closure: confirming root causes are written back to `ADR-`, new gaps recorded as `GAP-`, and falsified legacy paths or deprecated interfaces logged in the Tombstone registry with zero remaining repository references.
 
 ### 4.3 Parallel dispatch (fill the cap when a task splits — but **only inside a bucket**)
 

@@ -149,6 +149,15 @@ func TestHelp(t *testing.T) {
 	}
 }
 
+// TestSpecTraceSubcommand verifies dispatching to the spectrace package.
+func TestSpecTraceSubcommand(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"spec-trace", "--help"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit=%d want 0 for spec-trace --help; stderr=%q", code, stderr.String())
+	}
+}
+
 // TestVersionNoExternalState is a behavioural guard (ADR §2.1: "--version 不读
 // 工作区、不调 git、不依赖任何外部状态"): --version must produce identical output
 // regardless of CWD or env. We cannot fully prove a negative, but we can prove

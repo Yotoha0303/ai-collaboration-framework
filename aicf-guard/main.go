@@ -15,6 +15,7 @@ import (
 	"os"
 
 	"aicf-guard/internal/progress"
+	"aicf-guard/internal/spectrace"
 )
 
 // version and commit are build-time injected (ADR §2.1 R4) via:
@@ -55,6 +56,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		// logic — including the deliberate silences — lives in the package so it
 		// can be exercised without a process boundary.
 		return progress.Run(args[1:], stdout, stderr, progress.DefaultDeps())
+	case "spec-trace":
+		return spectrace.Run(args[1:], stdout, stderr)
 	case "numbers", "inject", "adapter", "selftest", "doctor":
 		// Not yet ported. Placeholder exits 1 with a clear stderr line so it is
 		// never mistaken for a silent success (fail-closed).
@@ -75,6 +78,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "subcommands (ADR-001 §2.1):")
 	fmt.Fprintln(w, "  progress   check progress page against mainline")
+	fmt.Fprintln(w, "  spec-trace audit specification anchors and verify code/test alignment")
 	fmt.Fprintln(w, "  numbers    check identifier numbers across branches (M1)")
 	fmt.Fprintln(w, "  inject     inject AGENTS.md tail for Antigravity (M2)")
 	fmt.Fprintln(w, "  adapter    adapt progress/numbers to Antigravity Stop protocol (M2)")

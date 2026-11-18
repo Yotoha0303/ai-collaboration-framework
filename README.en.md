@@ -349,6 +349,9 @@ docs/
                                  two copy-paste negative cases + the measured readings
   known-issues.md                **Maturity assessment & systemic known-issues analysis**:
                                  measured profile of four problem domains + convergence roadmap
+  design-philosophy.md           **Design-thinking extraction**: twelve design principles, six explicit
+                                 tensions, the spoken ideas recorded only in issues, input-to-landing map,
+                                 fingerprints of the source files
 ```
 > ⚠️ **Layouts differ, and this repo is "self-hosted"**: the repo is the directory that
 > **contains `.git`** (any name). The table above is annotated for the **target layout**
